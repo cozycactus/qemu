@@ -3465,10 +3465,13 @@ static bool trans_SCR(DisasContext *ctx, arg_SCR *a){
     return true;
 }
 
-//TODO: implement
 static bool trans_SLEEP(DisasContext *ctx, arg_SLEEP *a)
 {
-    return false;
+    ctx->base.pc_next += 4;
+    tcg_gen_movi_tl(cpu_r[PC_REG], ctx->base.pc_next);
+    gen_helper_avr32_sleep(tcg_env);
+    ctx->base.is_jmp = DISAS_NORETURN;
+    return true;
 }
 
 static bool trans_SWAP_B(DisasContext *ctx, arg_SWAP_B *a)

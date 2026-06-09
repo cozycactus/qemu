@@ -354,6 +354,15 @@ void helper_break(CPUAVR32AState *env)
     cpu_loop_exit(cs);
 }
 
+void helper_avr32_sleep(CPUAVR32AState *env)
+{
+    CPUState *cs = env_cpu(env);
+
+    cs->halted = 1;
+    cs->exception_index = EXCP_HLT;
+    cpu_loop_exit(cs);
+}
+
 uint32_t helper_avr32_count(void)
 {
     return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / 50;
