@@ -126,6 +126,8 @@ static void avr32_cpu_reset_hold(Object *obj, ResetType type)
     env->r[AVR32A_PC_REG] = 0x80000000;
     env->r[AVR32A_LR_REG] = 0;
     env->r[AVR32A_SP_REG] = 0;
+    env->task_sp = 0;
+    env->supervisor_sp = 0;
 }
 
 static ObjectClass* avr32_cpu_class_by_name(const char *cpu_model)
@@ -213,6 +215,10 @@ static bool avr32_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 
     env->sysr[SYSREG_RAR_INT0_WORD + level] = env->r[AVR32A_PC_REG];
     env->sysr[SYSREG_RSR_INT0_WORD + level] = sr;
+    if (((sr >> AVR32_SR_MODE_SHIFT) & 7) == 0) {
+        env->task_sp = env->r[AVR32A_SP_REG];
+        env->r[AVR32A_SP_REG] = env->supervisor_sp;
+    }
 
     for (int i = 0; i < 3; i++) {
         env->sflags[AVR32_SR_MODE_SHIFT + i] =

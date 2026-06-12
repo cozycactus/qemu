@@ -87,6 +87,8 @@ typedef struct CPUArchState {
 
     // Register File Registers
     uint32_t r[AVR32A_REG_PAGE_SIZE]; // 32 bits each
+    uint32_t task_sp;
+    uint32_t supervisor_sp;
 
     //System registers
     uint32_t sysr[AVR32A_SYS_REG];

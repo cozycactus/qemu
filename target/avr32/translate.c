@@ -39,6 +39,9 @@
 #define LR_REG 14
 #define SP_REG 13
 
+#define AVR32_MODE_USER 0
+#define AVR32_SR_MODE_SHIFT 22
+#define AVR32_SR_MODE_MASK 7
 #define SYS_MODE 11
 
 #define SYSREG_EVBA_WORD (0x0004 / 4)
@@ -78,6 +81,8 @@
 static TCGv cpu_sflags[32];
 
 static TCGv cpu_r[NUM_REG_PAGE_SIZE];
+static TCGv cpu_task_sp;
+static TCGv cpu_supervisor_sp;
 
 //SystemRegisters
 static TCGv cpu_sysr[AVR32A_SYS_REG];
@@ -107,6 +112,20 @@ static void gen_unpack_sr(TCGv sr)
         tcg_gen_shri_i32(cpu_sflags[i], sr, i);
         tcg_gen_andi_i32(cpu_sflags[i], cpu_sflags[i], 0x1);
     }
+}
+
+static void gen_restore_sp_for_sr(TCGv sr)
+{
+    TCGLabel *not_user = gen_new_label();
+    TCGv mode = tcg_temp_new_i32();
+
+    tcg_gen_shri_i32(mode, sr, AVR32_SR_MODE_SHIFT);
+    tcg_gen_andi_i32(mode, mode, AVR32_SR_MODE_MASK);
+    tcg_gen_brcondi_i32(TCG_COND_NE, mode, AVR32_MODE_USER, not_user);
+    tcg_gen_mov_i32(cpu_supervisor_sp, cpu_r[SP_REG]);
+    tcg_gen_mov_i32(cpu_r[SP_REG], cpu_task_sp);
+
+    gen_set_label(not_user);
 }
 
 static bool avr32_code_tlb_lookup(CPUAVR32AState *env, uint32_t vaddr,
@@ -224,6 +243,13 @@ void avr32_tcg_init(void){
                                           offsetof(CPUAVR32AState, r[i]),
                                           avr32_cpu_r_names[i]);
     }
+    cpu_task_sp = tcg_global_mem_new_i32(tcg_env,
+                                         offsetof(CPUAVR32AState, task_sp),
+                                         "task-sp");
+    cpu_supervisor_sp =
+        tcg_global_mem_new_i32(tcg_env,
+                               offsetof(CPUAVR32AState, supervisor_sp),
+                               "supervisor-sp");
 
     for(i = 0;i < AVR32A_SYS_REG; ++i) {
         char* name;
@@ -1973,7 +1999,8 @@ static bool trans_LDMTS(DisasContext *ctx, arg_LDMTS *a){
 
     for(int i = 15; i >= 0; i--){
         if(((a->list >> i) & 1) == 1){
-            tcg_gen_qemu_ld_tl(cpu_r[i], addr, 0, MO_BEUL);
+            tcg_gen_qemu_ld_tl(i == SP_REG ? cpu_task_sp : cpu_r[i], addr, 0,
+                               MO_BEUL);
             tcg_gen_addi_i32(addr, addr, 0x4);
             if (i == PC_REG) {
                 ctx->base.is_jmp = DISAS_JUMP;
@@ -3117,6 +3144,7 @@ static bool trans_RETS(DisasContext *ctx, arg_RETS *a){
     gen_set_label(if_1_else_if);
     TCGv sr = tcg_temp_new_i32();
     tcg_gen_mov_i32(sr, cpu_sysr[SYSREG_RSR_SUP_WORD]);
+    gen_restore_sp_for_sr(sr);
     gen_unpack_sr(sr);
     tcg_gen_mov_i32(cpu_r[PC_REG], cpu_sysr[SYSREG_RAR_SUP_WORD]);
     tcg_gen_br(exit);
@@ -3424,6 +3452,8 @@ static bool trans_SCALL(DisasContext *ctx, arg_SCALL *a){
 
     tcg_gen_addi_i32(cpu_sysr[SYSREG_RAR_SUP_WORD], cpu_r[PC_REG], 0x2);
     tcg_gen_mov_i32(cpu_sysr[SYSREG_RSR_SUP_WORD], sr);
+    tcg_gen_mov_i32(cpu_task_sp, cpu_r[SP_REG]);
+    tcg_gen_mov_i32(cpu_r[SP_REG], cpu_supervisor_sp);
     tcg_gen_addi_i32(cpu_r[PC_REG], cpu_sysr[SYSREG_EVBA_WORD], 0x100);
     tcg_gen_movi_i32(cpu_sflags[22], 0x1);
     tcg_gen_movi_i32(cpu_sflags[23], 0x0);
@@ -3847,7 +3877,8 @@ static bool trans_STMTS(DisasContext *ctx, arg_STMTS *a){
             regFlag = (a->list >> i) & 1;
             if(regFlag == 1){
                 tcg_gen_subi_i32(addr, addr, 0x4);
-                tcg_gen_qemu_st_tl(cpu_r[i], addr, 0x00, MO_BEUL);
+                tcg_gen_qemu_st_tl(i == SP_REG ? cpu_task_sp : cpu_r[i], addr,
+                                   0x00, MO_BEUL);
             }
         }
         tcg_gen_mov_i32(cpu_r[a->rp], addr);
@@ -3856,7 +3887,8 @@ static bool trans_STMTS(DisasContext *ctx, arg_STMTS *a){
         for (int i = 15; i >= 0; i--){
             regFlag = (a->list >> i) & 1;
             if(regFlag == 1){
-                tcg_gen_qemu_st_tl(cpu_r[i], addr, 0x00, MO_BEUL);
+                tcg_gen_qemu_st_tl(i == SP_REG ? cpu_task_sp : cpu_r[i], addr,
+                                   0x00, MO_BEUL);
                 tcg_gen_addi_i32(addr, addr, 0x4);
             }
         }

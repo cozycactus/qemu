@@ -53,6 +53,8 @@
 #define AVR32_PTRS_PER_PTE 1024
 #define AVR32_ECR_TLB_MISS_X 20
 #define AVR32_ECR_TLB_MISS_W 28
+#define AVR32_MODE_USER 0
+#define AVR32_MODE_SUPERVISOR 1
 #define AVR32_MODE_INT0 2
 #define AVR32_MODE_EXCEPTION 6
 
@@ -243,6 +245,23 @@ static unsigned avr32_get_mode(CPUAVR32AState *env)
          | ((env->sflags[24] & 1) << 2);
 }
 
+static void avr32_enter_privileged(CPUAVR32AState *env, unsigned mode)
+{
+    if (avr32_get_mode(env) == AVR32_MODE_USER) {
+        env->task_sp = env->r[AVR32A_SP_REG];
+        env->r[AVR32A_SP_REG] = env->supervisor_sp;
+    }
+    avr32_set_mode(env, mode);
+}
+
+static void avr32_restore_sp_for_mode(CPUAVR32AState *env, unsigned mode)
+{
+    if (mode == AVR32_MODE_USER) {
+        env->supervisor_sp = env->r[AVR32A_SP_REG];
+        env->r[AVR32A_SP_REG] = env->task_sp;
+    }
+}
+
 static void avr32_unpack_sr(CPUAVR32AState *env, uint32_t sr)
 {
     for (unsigned i = 0; i < 32; i++) {
@@ -272,7 +291,7 @@ void helper_avr32_tlb_miss(CPUAVR32AState *env, uint32_t address,
     env->sysr[SYSREG_RAR_EX_WORD] = env->r[AVR32A_PC_REG];
     env->sysr[SYSREG_RSR_EX_WORD] = avr32_pack_sr(env);
     env->r[AVR32A_PC_REG] = env->sysr[SYSREG_EVBA_WORD] + vector;
-    avr32_set_mode(env, AVR32_MODE_EXCEPTION);
+    avr32_enter_privileged(env, AVR32_MODE_EXCEPTION);
 
     tlb_flush(cs);
     cpu_loop_exit_restore(cs, 0);
@@ -385,6 +404,7 @@ void helper_avr32_rete(CPUAVR32AState *env)
     }
 
     env->r[AVR32A_PC_REG] = env->sysr[rar];
+    avr32_restore_sp_for_mode(env, (env->sysr[rsr] >> 22) & 7);
     avr32_unpack_sr(env, env->sysr[rsr]);
     env->intsrc = -1;
     env->intlevel = 0;

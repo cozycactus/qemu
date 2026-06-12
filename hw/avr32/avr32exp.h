@@ -27,6 +27,7 @@
 
 #define TYPE_AVR32EXP_MCU "AVR32EXP"
 #define TYPE_AVR32EXPS_MCU "AVR32EXPS"
+#define AVR32EXP_USART_RX_FIFO_SIZE 64
 
 typedef struct AVR32EXPMcuState AVR32EXPMcuState;
 DECLARE_INSTANCE_CHECKER(AVR32EXPMcuState, AVR32EXP_MCU, TYPE_AVR32EXP_MCU)
@@ -48,6 +49,9 @@ typedef struct AVR32EXPUSARTState {
     uint32_t rx_status;
     uint8_t rx_byte;
     bool rx_ready;
+    uint8_t rx_fifo[AVR32EXP_USART_RX_FIFO_SIZE];
+    unsigned rx_fifo_head;
+    unsigned rx_fifo_len;
     unsigned irq;
 } AVR32EXPUSARTState;
 

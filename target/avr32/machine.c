@@ -53,6 +53,8 @@ const VMStateDescription vms_avr32_cpu = {
         .fields = (VMStateField[]) {
 
                 VMSTATE_UINT32_ARRAY(env.r, AVR32ACPU, AVR32A_REG_PAGE_SIZE),
+                VMSTATE_UINT32(env.task_sp, AVR32ACPU),
+                VMSTATE_UINT32(env.supervisor_sp, AVR32ACPU),
 
                 VMSTATE_SINGLE(env.sr, AVR32ACPU , 0, vms_sreg, uint32_t),
 
