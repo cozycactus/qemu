@@ -3527,6 +3527,14 @@ static bool trans_SWAP_BH(DisasContext *ctx, arg_SWAP_BH *a)
     return true;
 }
 
+static bool trans_SWAP_H(DisasContext *ctx, arg_SWAP_H *a)
+{
+    tcg_gen_rotli_i32(cpu_r[a->rd], cpu_r[a->rd], 16);
+
+    ctx->base.pc_next += 2;
+    return true;
+}
+
 static bool trans_SYNC(DisasContext *ctx, arg_SYNC *a)
 {
     tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);

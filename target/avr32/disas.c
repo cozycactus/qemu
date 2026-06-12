@@ -326,6 +326,7 @@ INSN(SCR,   SCR,        "%s",                                   REG(a->rd))
 
 INSN(SWAP_B,  SWAP.B,   "%s",                                   REG(a->rd))
 INSN(SWAP_BH, SWAP.BH,  "%s",                                   REG(a->rd))
+INSN(SWAP_H,  SWAP.H,   "%s",                                   REG(a->rd))
 
 INSN(SLEEP, SLEEP,      "0x%02x,",                               a->op8)
 INSN(SYNC,  SYNC,       "0x%02x",                                a->op8)
