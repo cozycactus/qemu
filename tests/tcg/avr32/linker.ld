@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 ENTRY(_start)
 
 MEMORY
@@ -34,12 +35,15 @@ SECTIONS
         __bss_end = .;
     } > SRAM
 
+    ASSERT(__bss_end <= ORIGIN(SRAM) + 0x100, "data/bss overlaps results")
+
     .results 0x100 (NOLOAD) : ALIGN(4)
     {
         KEEP(*(.results))
     } > SRAM
 
     __stack_top = ORIGIN(SRAM) + LENGTH(SRAM);
+    ASSERT(__stack_top > __bss_end, "stack overlaps data/bss")
 
     /DISCARD/ :
     {

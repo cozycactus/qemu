@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 TARGET_ARCH=avr32
 TARGET_XML_FILES= avr32a-cpu.xml
 TARGET_LONG_BITS=32

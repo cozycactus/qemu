@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
 # AVR32 system tests
 #
@@ -15,7 +16,8 @@ LINK_SCRIPT = $(AVR32_SRC)/linker.ld
 CRT_OBJS = boot.o
 
 AVR32_MULTIARCH_TESTS = hello
-TESTS += cpu-smoke insn-arith insn-branch insn-shift insn-load-store
+TESTS += cpu-smoke runtime-init insn-arith insn-branch insn-shift
+TESTS += insn-load-store
 TESTS += $(AVR32_MULTIARCH_TESTS)
 MULTIARCH_TESTS =
 

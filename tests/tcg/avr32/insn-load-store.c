@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <stdint.h>
 
 static uint32_t words[4] __attribute__((aligned(16)));
@@ -7,12 +8,11 @@ static uint32_t load_store_word(uint32_t value)
 {
     uint32_t out;
 
-    __asm__ volatile (
-        "st.w %1[0], %2\n\t"
-        "ld.w %0, %1[0]"
-        : "=r"(out)
-        : "r"(&words[1]), "r"(value)
-        : "memory");
+    __asm__ volatile("st.w %1[0], %2\n\t"
+                     "ld.w %0, %1[0]"
+                     : "=r"(out)
+                     : "r"(&words[1]), "r"(value)
+                     : "memory");
 
     return out;
 }
@@ -21,12 +21,11 @@ static uint32_t load_store_halfword(uint32_t value)
 {
     uint32_t out;
 
-    __asm__ volatile (
-        "st.h %1[0], %2\n\t"
-        "ld.uh %0, %1[0]"
-        : "=r"(out)
-        : "r"(&bytes[2]), "r"(value)
-        : "memory");
+    __asm__ volatile("st.h %1[0], %2\n\t"
+                     "ld.uh %0, %1[0]"
+                     : "=r"(out)
+                     : "r"(&bytes[2]), "r"(value)
+                     : "memory");
 
     return out;
 }
@@ -35,12 +34,11 @@ static uint32_t load_store_byte(uint32_t value)
 {
     uint32_t out;
 
-    __asm__ volatile (
-        "st.b %1[0], %2\n\t"
-        "ld.ub %0, %1[0]"
-        : "=r"(out)
-        : "r"(&bytes[5]), "r"(value)
-        : "memory");
+    __asm__ volatile("st.b %1[0], %2\n\t"
+                     "ld.ub %0, %1[0]"
+                     : "=r"(out)
+                     : "r"(&bytes[5]), "r"(value)
+                     : "memory");
 
     return out;
 }

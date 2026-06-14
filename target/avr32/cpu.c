@@ -1,34 +1,22 @@
 /*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
  * QEMU AVR CPU
  *
  * Copyright (c) 2022-2023 Florian Göhler, Johannes Willbold
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, see
- * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 #include "qemu/osdep.h"
+#include "cpu.h"
+#include "accel/tcg/cpu-ops.h"
+#include "disas/dis-asm.h"
+#include "exec/helper-proto.h"
+#include "exec/translation-block.h"
 #include "qapi/error.h"
 #include "qemu/qemu-print.h"
-#include "exec/translation-block.h"
 #include "system/address-spaces.h"
-#include "cpu.h"
-#include "disas/dis-asm.h"
 #include "tcg/debug-assert.h"
-#include "accel/tcg/cpu-ops.h"
-#include "exec/helper-proto.h"
 
-static AVR32ACPU * cpu_self;
+static AVR32ACPU *cpu_self;
 static bool first_reset = true;
 
 /* System register indices are encoded as byte offsets divided by four. */
@@ -42,30 +30,30 @@ static bool first_reset = true;
 #define AVR32_SR_MODE_SHIFT 22
 #define AVR32_MODE_INT0 2
 
-static void avr32_cpu_disas_set_info(const CPUState *cpu, disassemble_info *info)
+static void avr32_cpu_disas_set_info(const CPUState *cpu,
+                                     disassemble_info *info)
 {
     info->mach = bfd_arch_unknown;
     info->print_insn = avr32_print_insn;
 }
 
-static void avr32a_cpu_init(Object* obj)
+static void avr32a_cpu_init(Object *obj)
 {
 }
 
-
-static void avr32b_cpu_init(Object* obj)
+static void avr32b_cpu_init(Object *obj)
 {
-    // TODO
+    /* TODO */
 }
 
 static void avr32_cpu_realizefn(DeviceState *dev, Error **errp)
 {
-    CPUState* cs = CPU(dev);
+    CPUState *cs = CPU(dev);
     cpu_self = AVR32A_CPU(cs);
-    AVR32ACPUClass* acc = AVR32A_CPU_GET_CLASS(dev);
+    AVR32ACPUClass *acc = AVR32A_CPU_GET_CLASS(dev);
     Error *local_err = NULL;
 
-    // TODO: Custom CPU setup stuff per CPU core arch
+    /* TODO: Custom CPU setup stuff per CPU core arch */
 
     cpu_exec_realizefn(cs, &local_err);
     if (local_err != NULL) {
@@ -83,8 +71,8 @@ static void avr32_cpu_reset_hold(Object *obj, ResetType type)
 {
     CPUState *cs = CPU(obj);
     AVR32ACPU *cpu = AVR32A_CPU(cs);
-    AVR32ACPUClass* acc = AVR32A_CPU_GET_CLASS(obj);
-    CPUAVR32AState* env = &cpu->env;
+    AVR32ACPUClass *acc = AVR32A_CPU_GET_CLASS(obj);
+    CPUAVR32AState *env = &cpu->env;
 
     if (acc->parent_phases.hold) {
         acc->parent_phases.hold(obj, type);
@@ -94,7 +82,7 @@ static void avr32_cpu_reset_hold(Object *obj, ResetType type)
     env->intlevel = 0;
     env->intsrc = -1;
 
-    if(first_reset) {
+    if (first_reset) {
         memset(env->r, 0, sizeof(env->r));
         memset(env->sflags, 1, sizeof(env->sflags));
         first_reset = false;
@@ -102,24 +90,23 @@ static void avr32_cpu_reset_hold(Object *obj, ResetType type)
 
     env->sr = 0;
 
-    for(int i= 0; i< 32; i++){
+    for (int i = 0; i < 32; i++) {
         env->sflags[i] = 0;
     }
     env->sflags[16] = 1;
     env->sflags[21] = 1;
     env->sflags[22] = 1;
 
-
-    for(int i= 0; i< AVR32A_SYS_REG; i++){
+    for (int i = 0; i < AVR32A_SYS_REG; i++) {
         env->sysr[i] = 0;
     }
     /* Advertise a small shared-TLB core with 32-byte I/D cache lines. */
     env->sysr[SYSREG_CONFIG0_WORD] = (2u << 7) | 1u;
-    env->sysr[SYSREG_CONFIG1_WORD] = (4u << 3) | (5u << 6)
-                                   | (4u << 13) | (5u << 16);
+    env->sysr[SYSREG_CONFIG1_WORD] =
+        (4u << 3) | (5u << 6) | (4u << 13) | (5u << 16);
     memset(env->tlb, 0, sizeof(env->tlb));
 
-    for(int i= 0; i< AVR32A_REG_PAGE_SIZE; i++){
+    for (int i = 0; i < AVR32A_REG_PAGE_SIZE; i++) {
         env->r[i] = 0;
     }
 
@@ -130,7 +117,7 @@ static void avr32_cpu_reset_hold(Object *obj, ResetType type)
     env->supervisor_sp = 0;
 }
 
-static ObjectClass* avr32_cpu_class_by_name(const char *cpu_model)
+static ObjectClass *avr32_cpu_class_by_name(const char *cpu_model)
 {
     ObjectClass *oc;
     (void)cpu_model;
@@ -156,15 +143,15 @@ static void avr32_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     qemu_fprintf(f, "LR:    " TARGET_FMT_lx "\n", env->r[AVR32A_LR_REG]);
 
     int i;
-    for(i = 0;i < AVR32A_REG_PAGE_SIZE-3; ++i) {
+    for (i = 0; i < AVR32A_REG_PAGE_SIZE - 3; ++i) {
         qemu_fprintf(f, "r%d:    " TARGET_FMT_lx "\n", i, env->r[i]);
     }
 
-    for(i= 0; i< 32; i++){
-        qemu_fprintf(f, "%s:    " TARGET_FMT_lx "\n", avr32_cpu_sr_flag_names[i], env->sflags[i]);
+    for (i = 0; i < 32; i++) {
+        qemu_fprintf(f, "%s:    " TARGET_FMT_lx "\n",
+                     avr32_cpu_sr_flag_names[i], env->sflags[i]);
     }
 
-    qemu_fprintf(f, "\n");
 }
 
 static void avr32_cpu_set_pc(CPUState *cs, vaddr value)
@@ -184,7 +171,7 @@ static TCGTBCPUState avr32_get_tb_cpu_state(CPUState *cs)
 {
     AVR32ACPU *cpu = AVR32A_CPU(cs);
 
-    return (TCGTBCPUState){ .pc = cpu->env.r[AVR32A_PC_REG], .flags = 0 };
+    return (TCGTBCPUState){.pc = cpu->env.r[AVR32A_PC_REG], .flags = 0};
 }
 
 static int avr32_cpu_mmu_index(CPUState *cs, bool ifetch)
@@ -203,9 +190,8 @@ static bool avr32_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
         return false;
     }
 
-    if (!cpu_interrupts_enabled(env)
-        || level < 0 || level > 3
-        || env->sflags[AVR32_SR_I0M_BIT + level]) {
+    if (!cpu_interrupts_enabled(env) || level < 0 || level > 3 ||
+        env->sflags[AVR32_SR_I0M_BIT + level]) {
         return false;
     }
 
@@ -231,39 +217,39 @@ static bool avr32_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     return true;
 }
 
-static void avr32_restore_state_to_opc(CPUState *cs,
-                                     const TranslationBlock *tb,
-                                     const uint64_t *data)
+static void avr32_restore_state_to_opc(CPUState *cs, const TranslationBlock *tb,
+                                       const uint64_t *data)
 {
     AVR32ACPU *cpu = AVR32A_CPU(cs);
 
-    // TODO: verify whether this is correct...
+    /* TODO: verify whether this is correct... */
     cpu->env.r[AVR32A_PC_REG] = data[0];
 }
 
 #include "hw/core/sysemu-cpu-ops.h"
 
 static const struct SysemuCPUOps avr32_sysemu_ops = {
-        .has_work = avr32_cpu_has_work,
-        .get_phys_page_debug = avr32_cpu_get_phys_page_debug,
+    .has_work = avr32_cpu_has_work,
+    .get_phys_page_debug = avr32_cpu_get_phys_page_debug,
 };
 
 static const struct TCGCPUOps avr32_tcg_ops = {
-        .initialize = avr32_tcg_init,
-        .translate_code = avr32_translate_code,
-        .get_tb_cpu_state = avr32_get_tb_cpu_state,
-        .synchronize_from_tb = avr32_cpu_synchronize_from_tb,
-        .restore_state_to_opc = avr32_restore_state_to_opc,
-        .mmu_index = avr32_cpu_mmu_index,
-        .cpu_exec_interrupt = avr32_cpu_exec_interrupt,
-        .cpu_exec_halt = avr32_cpu_has_work,
-        .cpu_exec_reset = cpu_reset,
-        .tlb_fill = avr32_cpu_tlb_fill,
-        .do_interrupt = avr32_cpu_do_interrupt,
-        .pointer_wrap = cpu_pointer_wrap_uint32,
+    .initialize = avr32_tcg_init,
+    .translate_code = avr32_translate_code,
+    .get_tb_cpu_state = avr32_get_tb_cpu_state,
+    .synchronize_from_tb = avr32_cpu_synchronize_from_tb,
+    .restore_state_to_opc = avr32_restore_state_to_opc,
+    .mmu_index = avr32_cpu_mmu_index,
+    .cpu_exec_interrupt = avr32_cpu_exec_interrupt,
+    .cpu_exec_halt = avr32_cpu_has_work,
+    .cpu_exec_reset = cpu_reset,
+    .tlb_fill = avr32_cpu_tlb_fill,
+    .do_interrupt = avr32_cpu_do_interrupt,
+    .pointer_wrap = cpu_pointer_wrap_uint32,
 };
 
-void avr32_cpu_synchronize_from_tb(CPUState *cs, const TranslationBlock *tb){
+void avr32_cpu_synchronize_from_tb(CPUState *cs, const TranslationBlock *tb)
+{
     AVR32ACPU *cpu = AVR32A_CPU(cs);
     tcg_debug_assert(!tcg_cflags_has(cs, CF_PCREL));
     cpu->env.r[AVR32A_PC_REG] = tb->pc;
@@ -276,7 +262,8 @@ static void avr32a_cpu_class_init(ObjectClass *oc, const void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     ResettableClass *rc = RESETTABLE_CLASS(oc);
 
-    device_class_set_parent_realize(dc, avr32_cpu_realizefn, &acc->parent_realize);
+    device_class_set_parent_realize(dc, avr32_cpu_realizefn,
+                                    &acc->parent_realize);
     resettable_class_set_parent_phases(rc, NULL, avr32_cpu_reset_hold, NULL,
                                        &acc->parent_phases);
 
@@ -295,43 +282,42 @@ static void avr32a_cpu_class_init(ObjectClass *oc, const void *data)
     cc->gdb_core_xml_file = "avr32a-cpu.xml";
 }
 
-
 static void avr32b_cpu_class_init(ObjectClass *oc, const void *data)
 {
-    // TODO
+    /* TODO */
 }
 
 static const AVR32ACPUDef avr32_cpu_defs[] = {
-        {
-                .name = "AVR32EXPC",
-                .parent_microarch = TYPE_AVR32A_CPU,
-                .core_type = AVR32_EXP,
-                .series_type = AVR32_EXP_S,
-                .clock_speed = 66 * 1000 * 1000, /* 66 MHz */
-                .audio = false,
-                .aes = false
-        }
+    {
+        .name = "AVR32EXPC",
+        .parent_microarch = TYPE_AVR32A_CPU,
+        .core_type = AVR32_EXP,
+        .series_type = AVR32_EXP_S,
+        .clock_speed = 66 * 1000 * 1000, /* 66 MHz */
+        .audio = false,
+        .aes = false,
+    },
 };
 
 static void avr32_cpu_cpudef_class_init(ObjectClass *oc, const void *data)
 {
-    AVR32ACPUClass* acc = AVR32A_CPU_CLASS(oc);
+    AVR32ACPUClass *acc = AVR32A_CPU_CLASS(oc);
     acc->cpu_def = data;
 }
 
-static char* avr32_cpu_type_name(const char* model_name)
+static char *avr32_cpu_type_name(const char *model_name)
 {
     return g_strdup_printf(AVR32A_CPU_TYPE_NAME("%s"), model_name);
 }
 
-static void avr32_register_cpudef_type(const struct AVR32ACPUDef* def)
+static void avr32_register_cpudef_type(const struct AVR32ACPUDef *def)
 {
-    char* cpu_model_name = avr32_cpu_type_name(def->name);
+    char *cpu_model_name = avr32_cpu_type_name(def->name);
     TypeInfo ti = {
-            .name = cpu_model_name,
-            .parent = def->parent_microarch,
-            .class_init = avr32_cpu_cpudef_class_init,
-            .class_data = (void *)def,
+        .name = cpu_model_name,
+        .parent = def->parent_microarch,
+        .class_init = avr32_cpu_cpudef_class_init,
+        .class_data = (void *)def,
     };
 
     type_register_static(&ti);
@@ -339,24 +325,24 @@ static void avr32_register_cpudef_type(const struct AVR32ACPUDef* def)
 }
 
 static const TypeInfo avr32_cpu_arch_types[] = {
-        {
-                .name = TYPE_AVR32A_CPU,
-                .parent = TYPE_CPU,
-                .instance_size = sizeof(AVR32ACPU),
-                .instance_init = avr32a_cpu_init,
-                .abstract = true,
-                .class_size = sizeof(AVR32ACPUClass),
-                .class_init = avr32a_cpu_class_init,
-        },
-        {
-                .name = TYPE_AVR32B_CPU,
-                .parent = TYPE_CPU,
-                .instance_size = sizeof(AVR32ACPU),
-                .instance_init = avr32b_cpu_init,
-                .abstract = true,
-                .class_size = sizeof(AVR32ACPUClass),
-                .class_init = avr32b_cpu_class_init,
-        }
+    {
+        .name = TYPE_AVR32A_CPU,
+        .parent = TYPE_CPU,
+        .instance_size = sizeof(AVR32ACPU),
+        .instance_init = avr32a_cpu_init,
+        .abstract = true,
+        .class_size = sizeof(AVR32ACPUClass),
+        .class_init = avr32a_cpu_class_init,
+    },
+    {
+        .name = TYPE_AVR32B_CPU,
+        .parent = TYPE_CPU,
+        .instance_size = sizeof(AVR32ACPU),
+        .instance_init = avr32b_cpu_init,
+        .abstract = true,
+        .class_size = sizeof(AVR32ACPUClass),
+        .class_init = avr32b_cpu_class_init,
+    },
 };
 
 static void avr32_cpu_register_types(void)

@@ -1,68 +1,57 @@
 /*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
  * QEMU AVR32 Example board
  *
  * Copyright (c) 2022-2023 Florian Göhler
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, see
- * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 #include "qemu/osdep.h"
-#include "qemu/units.h"
-#include "qemu/error-report.h"
-#include "qapi/error.h"
 #include "avr32exp.h"
 #include "boot.h"
 #include "elf.h"
-#include "qom/object.h"
 #include "hw/core/boards.h"
 #include "hw/core/cpu.h"
 #include "hw/core/loader.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
+#include "qemu/units.h"
+#include "qom/object.h"
 #include "system/address-spaces.h"
 
 struct AVR32ExampleBoardMachineState {
-    /*< private >*/
+    /*< private > */
     MachineState parent_obj;
-    /*< public >*/
+    /*< public > */
     AVR32EXPMcuState mcu;
-
 };
 typedef struct AVR32ExampleBoardMachineState AVR32ExampleBoardMachineState;
 
 struct AVR32ExampleBoardMachineClass {
-    /*< private >*/
+    /*< private > */
     MachineClass parent_class;
-    /*< public >*/
+    /*< public > */
 };
 typedef struct AVR32ExampleBoardMachineClass AVR32ExampleBoardMachineClass;
 
-#define TYPE_AVR32EXAMPLE_BOARD_BASE_MACHINE MACHINE_TYPE_NAME("avr32example-board-base")
+#define TYPE_AVR32EXAMPLE_BOARD_BASE_MACHINE                                   \
+    MACHINE_TYPE_NAME("avr32example-board-base")
 
 #define TYPE_AVR32EXAMPLE_BOARD_MACHINE MACHINE_TYPE_NAME("avr32example-board")
-DECLARE_OBJ_CHECKERS(AVR32ExampleBoardMachineState, AVR32ExampleBoardMachineClass,
-        AVR32EXAMPLE_BOARD_MACHINE, TYPE_AVR32EXAMPLE_BOARD_MACHINE)
+DECLARE_OBJ_CHECKERS(AVR32ExampleBoardMachineState,
+                     AVR32ExampleBoardMachineClass, AVR32EXAMPLE_BOARD_MACHINE,
+                     TYPE_AVR32EXAMPLE_BOARD_MACHINE)
 
-#define AVR32EXAMPLE_RAM_BASE           0x10000000
-#define AVR32EXAMPLE_RAM_SIZE           (64 * MiB)
-#define AVR32EXAMPLE_RAM_P1_ALIAS_BASE  0x90000000
-#define AVR32EXAMPLE_TAGS_PHYS          (AVR32EXAMPLE_RAM_BASE + 0x03f00000)
-#define AVR32EXAMPLE_TAGS_VIRT          (AVR32EXAMPLE_RAM_P1_ALIAS_BASE + 0x03f00000)
+#define AVR32EXAMPLE_RAM_BASE 0x10000000
+#define AVR32EXAMPLE_RAM_SIZE (64 * MiB)
+#define AVR32EXAMPLE_RAM_P1_ALIAS_BASE 0x90000000
+#define AVR32EXAMPLE_TAGS_PHYS (AVR32EXAMPLE_RAM_BASE + 0x03f00000)
+#define AVR32EXAMPLE_TAGS_VIRT (AVR32EXAMPLE_RAM_P1_ALIAS_BASE + 0x03f00000)
 
-#define AVR32_ATAG_MAGIC    0xa2a25441
-#define AVR32_ATAG_NONE     0x00000000
-#define AVR32_ATAG_CORE     0x54410001
-#define AVR32_ATAG_MEM      0x54410002
-#define AVR32_ATAG_CMDLINE  0x54410003
+#define AVR32_ATAG_MAGIC 0xa2a25441
+#define AVR32_ATAG_NONE 0x00000000
+#define AVR32_ATAG_CORE 0x54410001
+#define AVR32_ATAG_MEM 0x54410002
+#define AVR32_ATAG_CMDLINE 0x54410003
 
 static uint8_t *avr32example_put_be32(uint8_t *p, uint32_t value)
 {
@@ -81,12 +70,11 @@ static void avr32example_setup_atags(MachineState *machine, AVR32ACPU *cpu)
 {
     static const char default_cmdline[] =
         "console=ttyS0,115200n8 rdinit=/init lpj=100000";
-    const char *cmdline = machine->kernel_cmdline &&
-                          machine->kernel_cmdline[0] ?
-                          machine->kernel_cmdline : default_cmdline;
+    const char *cmdline = machine->kernel_cmdline && machine->kernel_cmdline[0]
+                              ? machine->kernel_cmdline
+                              : default_cmdline;
     size_t cmdline_len = strlen(cmdline) + 1;
-    uint32_t cmdline_size =
-        (sizeof(uint32_t) * 2 + cmdline_len + 3) / 4;
+    uint32_t cmdline_size = (sizeof(uint32_t) * 2 + cmdline_len + 3) / 4;
     g_autofree uint8_t *tags =
         g_malloc0((5 + 5 + cmdline_size + 2) * sizeof(uint32_t));
     uint8_t *p = tags;
@@ -122,8 +110,7 @@ static void avr32example_setup_atags(MachineState *machine, AVR32ACPU *cpu)
     cpu->env.r[12] = AVR32_ATAG_MAGIC;
 }
 
-static void avr32example_load_kernel(MachineState *machine,
-                                     AVR32ACPU *cpu)
+static void avr32example_load_kernel(MachineState *machine, AVR32ACPU *cpu)
 {
     uint64_t entry = 0;
     uint64_t low = 0;
@@ -134,13 +121,11 @@ static void avr32example_load_kernel(MachineState *machine,
         return;
     }
 
-    kernel_size = load_elf(machine->kernel_filename, NULL, NULL, NULL,
-                           &entry, &low, &high, NULL,
-                           ELFDATA2MSB, EM_AVR32, 0, 0);
+    kernel_size = load_elf(machine->kernel_filename, NULL, NULL, NULL, &entry,
+                           &low, &high, NULL, ELFDATA2MSB, EM_AVR32, 0, 0);
     if (kernel_size < 0) {
         error_report("Unable to load AVR32 kernel ELF '%s': %s",
-                     machine->kernel_filename,
-                     load_elf_strerror(kernel_size));
+                     machine->kernel_filename, load_elf_strerror(kernel_size));
         exit(1);
     }
 
@@ -150,9 +135,11 @@ static void avr32example_load_kernel(MachineState *machine,
 
 static void avr32example_board_init(MachineState *machine)
 {
-    AVR32ExampleBoardMachineState* m_state = AVR32EXAMPLE_BOARD_MACHINE(machine);
+    AVR32ExampleBoardMachineState *m_state =
+        AVR32EXAMPLE_BOARD_MACHINE(machine);
 
-    object_initialize_child(OBJECT(machine), "mcu", &m_state->mcu, TYPE_AVR32EXPS_MCU);
+    object_initialize_child(OBJECT(machine), "mcu", &m_state->mcu,
+                            TYPE_AVR32EXPS_MCU);
     sysbus_realize(SYS_BUS_DEVICE(&m_state->mcu), &error_abort);
 
     if (machine->firmware) {
@@ -170,7 +157,6 @@ static void avr32example_board_class_init(ObjectClass *oc, const void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
 
     mc->desc = "AVR32 Example Board";
-    mc->alias = "avr32example-board";
     mc->init = avr32example_board_init;
     mc->default_cpus = 1;
     mc->min_cpus = mc->default_cpus;
@@ -181,13 +167,13 @@ static void avr32example_board_class_init(ObjectClass *oc, const void *data)
 }
 
 static const TypeInfo avr32example_board_machine_types[] = {
-        {
-                .name           = TYPE_AVR32EXAMPLE_BOARD_MACHINE,
-                .parent         = TYPE_MACHINE,
-                .instance_size  = sizeof(AVR32ExampleBoardMachineState),
-                .class_size     = sizeof(AVR32ExampleBoardMachineClass),
-                .class_init     = avr32example_board_class_init,
-        }
+    {
+        .name = TYPE_AVR32EXAMPLE_BOARD_MACHINE,
+        .parent = TYPE_MACHINE,
+        .instance_size = sizeof(AVR32ExampleBoardMachineState),
+        .class_size = sizeof(AVR32ExampleBoardMachineClass),
+        .class_init = avr32example_board_class_init,
+    },
 };
 
 DEFINE_TYPES(avr32example_board_machine_types)

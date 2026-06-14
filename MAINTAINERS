@@ -242,6 +242,16 @@ F: gdbstub/gdb-xml/avr-cpu.xml
 F: target/avr/
 F: tests/functional/avr/
 
+AVR32 TCG CPUs
+S: Orphan
+F: configs/devices/avr32-softmmu/default.mak
+F: configs/targets/avr32-softmmu.mak
+F: docs/system/target-avr32.rst
+F: gdbstub/gdb-xml/avr32*.xml
+F: hw/avr32/
+F: target/avr32/
+F: tests/tcg/avr32/
+
 Hexagon TCG CPUs
 M: Brian Cain <brian.cain@oss.qualcomm.com>
 S: Supported

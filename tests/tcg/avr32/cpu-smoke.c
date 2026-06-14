@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <stdint.h>
 
 #define PASS_MARK 0x600dca7eU
@@ -5,13 +6,16 @@
 #define EXPECTED_RESULT 0xb52ccd45U
 #define QEMU_TEST_EXIT_BASE 0xfffff000U
 
-volatile uint32_t avr32_test_result[4] __attribute__((section(".results"), used));
+/* avr32_test_result is read through a fixed linker section after guest exit. */
+volatile uint32_t avr32_test_result[4]
+    __attribute__((section(".results"), used));
 
+/* qemu_test_exit is an MMIO pointer; volatile preserves device accesses. */
 static volatile uint32_t *const qemu_test_exit =
     (volatile uint32_t *)QEMU_TEST_EXIT_BASE;
 
 static inline __attribute__((always_inline)) uint32_t rotl32(uint32_t x,
-                                                            unsigned int n)
+                                                             unsigned int n)
 {
     return (x << n) | (x >> (32U - n));
 }

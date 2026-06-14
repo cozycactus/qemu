@@ -1,14 +1,15 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <stdint.h>
 
 static uint32_t lsl_imm(uint32_t value)
 {
-    __asm__ volatile ("lsl %0, 5" : "+r"(value) : : "cc");
+    __asm__ volatile("lsl %0, 5" : "+r"(value) : : "cc");
     return value;
 }
 
 static uint32_t lsr_imm(uint32_t value)
 {
-    __asm__ volatile ("lsr %0, 7" : "+r"(value) : : "cc");
+    __asm__ volatile("lsr %0, 7" : "+r"(value) : : "cc");
     return value;
 }
 
@@ -16,7 +17,10 @@ static uint32_t lsl_reg(uint32_t value, uint32_t shift)
 {
     uint32_t out;
 
-    __asm__ volatile ("lsl %0, %1, %2" : "=r"(out) : "r"(value), "r"(shift) : "cc");
+    __asm__ volatile("lsl %0, %1, %2"
+                     : "=r"(out)
+                     : "r"(value), "r"(shift)
+                     : "cc");
     return out;
 }
 
@@ -24,7 +28,10 @@ static uint32_t lsr_reg(uint32_t value, uint32_t shift)
 {
     uint32_t out;
 
-    __asm__ volatile ("lsr %0, %1, %2" : "=r"(out) : "r"(value), "r"(shift) : "cc");
+    __asm__ volatile("lsr %0, %1, %2"
+                     : "=r"(out)
+                     : "r"(value), "r"(shift)
+                     : "cc");
     return out;
 }
 

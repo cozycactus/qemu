@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 gen = [
   decodetree.process('insn.decode', extra_args: [ '--decode', 'decode_insn',
                                                   '--varinsnwidth', '32'  ])

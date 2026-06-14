@@ -1,14 +1,15 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <stdint.h>
 
 static uint32_t add_rr(uint32_t lhs, uint32_t rhs)
 {
-    __asm__ volatile ("add %0, %1" : "+r"(lhs) : "r"(rhs) : "cc");
+    __asm__ volatile("add %0, %1" : "+r"(lhs) : "r"(rhs) : "cc");
     return lhs;
 }
 
 static uint32_t sub_rr(uint32_t lhs, uint32_t rhs)
 {
-    __asm__ volatile ("sub %0, %1" : "+r"(lhs) : "r"(rhs) : "cc");
+    __asm__ volatile("sub %0, %1" : "+r"(lhs) : "r"(rhs) : "cc");
     return lhs;
 }
 

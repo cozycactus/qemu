@@ -1,38 +1,25 @@
 /*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
  * QEMU AVR CPU
  *
  * Copyright (c) 2022-2023 Florian Göhler, Johannes Willbold
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, see
- * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 #include "qemu/osdep.h"
-#include "tcg/tcg.h"
+#include "accel/tcg/cpu-ops.h"
 #include "cpu.h"
-#include "tcg/tcg-op.h"
-#include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
+#include "exec/helper-proto.h"
 #include "exec/log.h"
 #include "exec/translator.h"
 #include "helper_conditions.h"
-#include "accel/tcg/cpu-ops.h"
 #include "system/address-spaces.h"
-#include "stdlib.h"
+#include "tcg/tcg-op.h"
+#include "tcg/tcg.h"
 
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
-#undef  HELPER_H
+#undef HELPER_H
 
 #define NUM_REG_PAGE_SIZE 16
 #define PC_REG 15
@@ -84,11 +71,11 @@ static TCGv cpu_r[NUM_REG_PAGE_SIZE];
 static TCGv cpu_task_sp;
 static TCGv cpu_supervisor_sp;
 
-//SystemRegisters
+/* SystemRegisters */
 static TCGv cpu_sysr[AVR32A_SYS_REG];
 
 enum {
-    // Only the PC was modified, keep running without interrupt
+    /* Only the PC was modified, keep running without interrupt */
     DISAS_JUMP = DISAS_TARGET_0,
     DISAS_EXIT = DISAS_TARGET_1,
     DISAS_CHAIN = DISAS_TARGET_2
@@ -139,17 +126,17 @@ static bool avr32_code_tlb_lookup(CPUAVR32AState *env, uint32_t vaddr,
         if (!(entry->hi & AVR32_CODE_TLBEHI_VALID)) {
             continue;
         }
-        if ((entry->hi & AVR32_CODE_PAGE_MASK)
-            != (vaddr & AVR32_CODE_PAGE_MASK)) {
+        if ((entry->hi & AVR32_CODE_PAGE_MASK) !=
+            (vaddr & AVR32_CODE_PAGE_MASK)) {
             continue;
         }
-        if (!(entry->lo & AVR32_CODE_TLBELO_GLOBAL)
-            && (entry->hi & 0xff) != asid) {
+        if (!(entry->lo & AVR32_CODE_TLBELO_GLOBAL) &&
+            (entry->hi & 0xff) != asid) {
             continue;
         }
 
-        *paddr = (entry->lo & AVR32_CODE_PAGE_MASK)
-               | (vaddr & ~AVR32_CODE_PAGE_MASK);
+        *paddr = (entry->lo & AVR32_CODE_PAGE_MASK) |
+                 (vaddr & ~AVR32_CODE_PAGE_MASK);
         return true;
     }
 
@@ -166,8 +153,7 @@ struct DisasContext {
     uint32_t pc;
 };
 
-static bool avr32_code_read_u32(DisasContext *ctx, hwaddr addr,
-                                uint32_t *value)
+static bool avr32_code_read_u32(DisasContext *ctx, hwaddr addr, uint32_t *value)
 {
     MemTxResult result;
 
@@ -198,8 +184,8 @@ static bool avr32_code_page_table_lookup(DisasContext *ctx, uint32_t vaddr,
     }
 
     pte_addr = (pgd & AVR32_CODE_PAGE_MASK) | AVR32_CODE_P1SEG;
-    pte_addr += ((vaddr >> 12) & (AVR32_CODE_PTRS_PER_PTE - 1))
-              * sizeof(uint32_t);
+    pte_addr +=
+        ((vaddr >> 12) & (AVR32_CODE_PTRS_PER_PTE - 1)) * sizeof(uint32_t);
     pte_ok = avr32_code_read_u32(ctx, pte_addr, &pte);
     if (!pte_ok || !(pte & AVR32_CODE_PAGE_PRESENT)) {
         return false;
@@ -209,8 +195,7 @@ static bool avr32_code_page_table_lookup(DisasContext *ctx, uint32_t vaddr,
     return true;
 }
 
-static bool avr32_code_lduw(DisasContext *ctx, uint32_t vaddr,
-                            uint16_t *value)
+static bool avr32_code_lduw(DisasContext *ctx, uint32_t vaddr, uint16_t *value)
 {
     if (vaddr < 0x80000000u) {
         hwaddr paddr;
@@ -235,62 +220,55 @@ static bool avr32_code_lduw(DisasContext *ctx, uint32_t vaddr,
     return true;
 }
 
-void avr32_tcg_init(void){
+void avr32_tcg_init(void)
+{
+    static char sysreg_names[AVR32A_SYS_REG][sizeof("Sysreg-000")];
     int i;
 
-    for(i = 0;i < NUM_REG_PAGE_SIZE; ++i) {
-        cpu_r[i] = tcg_global_mem_new_i32(tcg_env,
-                                          offsetof(CPUAVR32AState, r[i]),
-                                          avr32_cpu_r_names[i]);
+    for (i = 0; i < NUM_REG_PAGE_SIZE; ++i) {
+        cpu_r[i] = tcg_global_mem_new_i32(
+            tcg_env, offsetof(CPUAVR32AState, r[i]), avr32_cpu_r_names[i]);
     }
-    cpu_task_sp = tcg_global_mem_new_i32(tcg_env,
-                                         offsetof(CPUAVR32AState, task_sp),
-                                         "task-sp");
-    cpu_supervisor_sp =
-        tcg_global_mem_new_i32(tcg_env,
-                               offsetof(CPUAVR32AState, supervisor_sp),
-                               "supervisor-sp");
+    cpu_task_sp = tcg_global_mem_new_i32(
+        tcg_env, offsetof(CPUAVR32AState, task_sp), "task-sp");
+    cpu_supervisor_sp = tcg_global_mem_new_i32(
+        tcg_env, offsetof(CPUAVR32AState, supervisor_sp), "supervisor-sp");
 
-    for(i = 0;i < AVR32A_SYS_REG; ++i) {
-        char* name;
-        int res_messg = asprintf(&name, "Sysreg-%03d\n", i);
-        if (res_messg < 0){
-        }
+    for (i = 0; i < AVR32A_SYS_REG; ++i) {
+        g_snprintf(sysreg_names[i], sizeof(sysreg_names[i]), "Sysreg-%03d", i);
 
-        cpu_sysr[i] = tcg_global_mem_new_i32(tcg_env,
-                                             offsetof(CPUAVR32AState, sysr[i]),
-                                             name);
-        free(name);
+        cpu_sysr[i] = tcg_global_mem_new_i32(
+            tcg_env, offsetof(CPUAVR32AState, sysr[i]), sysreg_names[i]);
     }
 
-    for(i = 0;i < 32; ++i) {
-        cpu_sflags[i] = tcg_global_mem_new_i32(tcg_env,
-                                               offsetof(CPUAVR32AState, sflags[i]),
-                                               avr32_cpu_sr_flag_names[i]);
+    for (i = 0; i < 32; ++i) {
+        cpu_sflags[i] =
+            tcg_global_mem_new_i32(tcg_env, offsetof(CPUAVR32AState, sflags[i]),
+                                   avr32_cpu_sr_flag_names[i]);
     }
 }
 
-// Decode helper required only if insn wide is variable
-static uint32_t decode_insn_load_bytes(DisasContext *ctx, uint32_t insn,
-                                       int i, int n){
-    if(i == 0){
+/* Decode helper required only if insn wide is variable */
+static uint32_t decode_insn_load_bytes(DisasContext *ctx, uint32_t insn, int i,
+                                       int n)
+{
+    if (i == 0) {
         uint16_t half;
         if (!avr32_code_lduw(ctx, ctx->base.pc_next + i, &half)) {
-            gen_helper_avr32_tlb_miss(tcg_env,
-                                      tcg_constant_i32(ctx->base.pc_next + i),
-                                      tcg_constant_i32(AVR32_CODE_ECR_TLB_MISS_X));
+            gen_helper_avr32_tlb_miss(
+                tcg_env, tcg_constant_i32(ctx->base.pc_next + i),
+                tcg_constant_i32(AVR32_CODE_ECR_TLB_MISS_X));
             ctx->base.is_jmp = DISAS_NORETURN;
             ctx->base.pc_next += 2;
             return 0;
         }
         insn = half << 16;
-    }
-    else if (i== 2){
+    } else if (i == 2) {
         uint16_t half;
         if (!avr32_code_lduw(ctx, ctx->base.pc_next + i, &half)) {
-            gen_helper_avr32_tlb_miss(tcg_env,
-                                      tcg_constant_i32(ctx->base.pc_next + i),
-                                      tcg_constant_i32(AVR32_CODE_ECR_TLB_MISS_X));
+            gen_helper_avr32_tlb_miss(
+                tcg_env, tcg_constant_i32(ctx->base.pc_next + i),
+                tcg_constant_i32(AVR32_CODE_ECR_TLB_MISS_X));
             ctx->base.is_jmp = DISAS_NORETURN;
             ctx->base.pc_next += 2;
             return 0;
@@ -298,14 +276,15 @@ static uint32_t decode_insn_load_bytes(DisasContext *ctx, uint32_t insn,
         insn |= half;
     }
 
-    //No instruction was loaded.
-    if(insn == 0x0){
+    /* No instruction was loaded. */
+    if (insn == 0x0) {
         gen_helper_raise_illegal_instruction(tcg_env);
     }
     return insn;
 }
 
-static void gen_goto_tb(DisasContext* ctx, int n, target_ulong dest){
+static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
+{
     if (translator_use_goto_tb(&ctx->base, dest)) {
         tcg_gen_goto_tb(n);
         tcg_gen_movi_i32(cpu_r[PC_REG], dest);
@@ -318,73 +297,76 @@ static void gen_goto_tb(DisasContext* ctx, int n, target_ulong dest){
     ctx->base.is_jmp = DISAS_CHAIN;
 }
 
-
 static uint32_t decode_insn_load(DisasContext *ctx);
 static bool decode_insn(DisasContext *ctx, uint32_t insn);
 #include "decode-insn.c.inc"
 
-static int sign_extend_8(int number){
-    if(((number >> 7) & 1) == 1){
+static int sign_extend_8(int number)
+{
+    if (((number >> 7) & 1) == 1) {
         number |= 0xFFFFFF00;
     }
     return number;
 }
 
-static bool trans_ABS(DisasContext *ctx, arg_ABS *a){
+static bool trans_ABS(DisasContext *ctx, arg_ABS *a)
+{
     TCGv reg = cpu_r[a->rd];
     tcg_gen_abs_i32(reg, reg);
-    tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], reg, 0); /* Zf = R == 0 */
+    tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], reg,
+                         0); /* Zf = R == 0 */
     ctx->base.pc_next += 2;
     return true;
 }
 
-//TODO: add tests
-static bool trans_ACALL(DisasContext *ctx, arg_ACALL *a){
+/* TODO: add tests */
+static bool trans_ACALL(DisasContext *ctx, arg_ACALL *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_movi_i32(temp, a->disp << 2);
 
     tcg_gen_addi_i32(cpu_r[AVR32A_LR_REG], cpu_r[AVR32A_LR_REG], 0x2);
     tcg_gen_add_i32(cpu_r[AVR32A_PC_REG], temp, cpu_sysr[2]);
 
-
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_ACR(DisasContext *ctx, arg_ACR *a){
+static bool trans_ACR(DisasContext *ctx, arg_ACR *a)
+{
     TCGv rd = tcg_temp_new_i32();
     TCGv res = tcg_temp_new_i32();
     TCGv cond = tcg_temp_new_i32();
 
     tcg_gen_mov_i32(rd, cpu_r[a->rd]);
 
-    //Add carry to reg
+    /* Add carry to reg */
     tcg_gen_add_i32(res, rd, cpu_sflags[sflagC]);
     tcg_gen_mov_i32(cpu_r[a->rd], res);
 
-    //modify status flags
+    /* modify status flags */
 
-    // Z-Flag
+    /* Z-Flag */
     tcg_gen_setcondi_tl(TCG_COND_EQ, cond, res, 0); /* Zf = R == 0 */
     tcg_gen_and_i32(cpu_sflags[sflagZ], cond, cpu_sflags[sflagZ]);
 
-    // V-Flag
+    /* V-Flag */
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(rd, rd, 31);
     tcg_gen_andc_i32(cpu_sflags[sflagV], res, rd);
 
-    // N -Flag
+    /* N -Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    // C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(cpu_sflags[sflagC], rd, res);
-
 
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_ADC(DisasContext *ctx, arg_ADC *a){
+static bool trans_ADC(DisasContext *ctx, arg_ADC *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv rx = tcg_temp_new_i32();
     TCGv ry = tcg_temp_new_i32();
@@ -393,61 +375,61 @@ static bool trans_ADC(DisasContext *ctx, arg_ADC *a){
     tcg_gen_mov_i32(rx, cpu_r[a->rx]);
     tcg_gen_mov_i32(ry, cpu_r[a->ry]);
 
-    tcg_gen_add_i32(res, rx,ry);
-    tcg_gen_add_i32(res, res,cpu_sflags[sflagC]);
-    tcg_gen_mov_i32( cpu_r[a->rd], res);
+    tcg_gen_add_i32(res, rx, ry);
+    tcg_gen_add_i32(res, res, cpu_sflags[sflagC]);
+    tcg_gen_mov_i32(cpu_r[a->rd], res);
 
-    // Z-flag
+    /* Z-flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, temp, res, 0);
     tcg_gen_and_i32(cpu_sflags[sflagZ], cpu_sflags[sflagZ], temp);
 
-    //move bit 31 to position 0
+    /* move bit 31 to position 0 */
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(rx, rx, 31);
     tcg_gen_shri_i32(ry, ry, 31);
 
-    // N-flag
+    /* N-flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    // V-flag
+    /* V-flag */
     set_v_flag_add(rx, ry, res, cpu_sflags);
 
-    // C-flag
+    /* C-flag */
     set_c_flag_add(rx, ry, res, cpu_sflags);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_ADD_f1(DisasContext *ctx, arg_ADD_f1 *a){
+static bool trans_ADD_f1(DisasContext *ctx, arg_ADD_f1 *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv Rd = tcg_temp_new_i32();
     TCGv Rs = tcg_temp_new_i32();
-    tcg_gen_mov_i32(Rd,  cpu_r[a->rd]);
+    tcg_gen_mov_i32(Rd, cpu_r[a->rd]);
     tcg_gen_mov_i32(Rs, cpu_r[a->rs]);
 
+    tcg_gen_add_i32(res, cpu_r[a->rd], cpu_r[a->rs]);
+    tcg_gen_add_i32(cpu_r[a->rd], cpu_r[a->rd], cpu_r[a->rs]);
 
-    tcg_gen_add_i32(res,  cpu_r[a->rd], cpu_r[a->rs]);
-    tcg_gen_add_i32(cpu_r[a->rd],  cpu_r[a->rd], cpu_r[a->rs]);
-
-    // set N flag: N ← RES[31]
+    /* set N flag: N ← RES[31] */
     tcg_gen_shri_i32(cpu_sflags[sflagN], res, 31);
 
-    // set Z flag: Z ← (RES[31:0] == 0)
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); /* Zf = R == 0 */
+    /* set Z flag: Z ← (RES[31:0] == 0) */
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = R == 0 */
 
     tcg_gen_shri_i32(Rd, Rd, 31);
     tcg_gen_shri_i32(Rs, Rs, 31);
     tcg_gen_shri_i32(res, res, 31);
 
-    // V-flag
+    /* V-flag */
     set_v_flag_add(Rd, Rs, res, cpu_sflags);
 
-    // C-flag
+    /* C-flag */
     set_c_flag_add(Rd, Rs, res, cpu_sflags);
 
-
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -455,7 +437,8 @@ static bool trans_ADD_f1(DisasContext *ctx, arg_ADD_f1 *a){
     return true;
 }
 
-static bool trans_ADD_f2(DisasContext *ctx, arg_ADD_f2 *a){
+static bool trans_ADD_f2(DisasContext *ctx, arg_ADD_f2 *a)
+{
     TCGv res = tcg_temp_new_i32();
 
     TCGv Rx = tcg_temp_new_i32();
@@ -467,25 +450,24 @@ static bool trans_ADD_f2(DisasContext *ctx, arg_ADD_f2 *a){
     tcg_gen_add_i32(res, Rx, Ry);
     tcg_gen_add_i32(cpu_r[a->rd], Rx, Ry);
 
-    // set N flag: N ← RES[31]
+    /* set N flag: N ← RES[31] */
     tcg_gen_shri_i32(cpu_sflags[sflagN], res, 31);
 
-    // set Z flag: Z ← (RES[31:0] == 0)
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); /* Zf = R == 0 */
-
+    /* set Z flag: Z ← (RES[31:0] == 0) */
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = R == 0 */
 
     tcg_gen_shri_i32(Rx, Rx, 31);
     tcg_gen_shri_i32(Ry, Ry, 31);
     tcg_gen_shri_i32(res, res, 31);
 
-    // V-flag
+    /* V-flag */
     set_v_flag_add(Rx, Ry, res, cpu_sflags);
 
-    // C-flag
+    /* C-flag */
     set_c_flag_add(Rx, Ry, res, cpu_sflags);
 
-
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -493,7 +475,8 @@ static bool trans_ADD_f2(DisasContext *ctx, arg_ADD_f2 *a){
     return true;
 }
 
-static bool trans_ADD_cond(DisasContext *ctx, arg_ADD_cond *a){
+static bool trans_ADD_cond(DisasContext *ctx, arg_ADD_cond *a)
+{
 
     TCGLabel *no_add = gen_new_label();
 
@@ -505,45 +488,44 @@ static bool trans_ADD_cond(DisasContext *ctx, arg_ADD_cond *a){
 
     gen_set_label(no_add);
 
-
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 4;
     return true;
 }
 
-//TODO: Add tests
-static bool trans_ADDABS(DisasContext *ctx, arg_ADDABS *a){
+/* TODO: Add tests */
+static bool trans_ADDABS(DisasContext *ctx, arg_ADDABS *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_abs_i32(temp, cpu_r[a->ry]);
     tcg_gen_add_i32(cpu_r[a->rd], cpu_r[a->rx], temp);
 
-    // Zf = result == 0
+    /* Zf = result == 0 */
     tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-//TODO: add tests
-static bool trans_ADDHHW(DisasContext *ctx, arg_ADDHHW *a){
+/* TODO: add tests */
+static bool trans_ADDHHW(DisasContext *ctx, arg_ADDHHW *a)
+{
     TCGv op1 = tcg_temp_new_i32();
     TCGv op2 = tcg_temp_new_i32();
     TCGv res = tcg_temp_new_i32();
 
-    if(a->x == 1){
+    if (a->x == 1) {
         tcg_gen_shri_i32(op1, cpu_r[a->rx], 0x10);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(op1, cpu_r[a->rx], 0xFFFF);
     }
     tcg_gen_ext16s_i32(op1, op1);
 
-    if(a->y == 1){
+    if (a->y == 1) {
         tcg_gen_shri_i32(op2, cpu_r[a->ry], 0x10);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(op2, cpu_r[a->ry], 0xFFFF);
     }
     tcg_gen_ext16s_i32(op2, op2);
@@ -551,27 +533,29 @@ static bool trans_ADDHHW(DisasContext *ctx, arg_ADDHHW *a){
 
     tcg_gen_mov_i32(res, cpu_r[a->rd]);
 
-    // set N flag: N ← RES[31]
+    /* set N flag: N ← RES[31] */
     tcg_gen_shri_i32(cpu_sflags[sflagN], res, 31);
 
-    // set Z flag: Z ← (RES[31:0] == 0)
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); /* Zf = R == 0 */
+    /* set Z flag: Z ← (RES[31:0] == 0) */
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = R == 0 */
 
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
     tcg_gen_shri_i32(res, res, 31);
 
-    // V-flag
+    /* V-flag */
     set_v_flag_add(op1, op2, res, cpu_sflags);
 
-    // C-flag
+    /* C-flag */
     set_c_flag_add(op1, op2, res, cpu_sflags);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_AND_f1(DisasContext *ctx, arg_AND_f1 *a){
+static bool trans_AND_f1(DisasContext *ctx, arg_AND_f1 *a)
+{
 
     tcg_gen_and_i32(cpu_r[a->rd], cpu_r[a->rd], cpu_r[a->rs]);
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
@@ -580,7 +564,8 @@ static bool trans_AND_f1(DisasContext *ctx, arg_AND_f1 *a){
     return true;
 }
 
-static bool trans_AND_f2(DisasContext *ctx, arg_AND_f2 *a){
+static bool trans_AND_f2(DisasContext *ctx, arg_AND_f2 *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_shli_i32(temp, cpu_r[a->ry], a->sa5);
     tcg_gen_and_i32(cpu_r[a->rd], cpu_r[a->rx], temp);
@@ -591,7 +576,8 @@ static bool trans_AND_f2(DisasContext *ctx, arg_AND_f2 *a){
     return true;
 }
 
-static bool trans_AND_f3(DisasContext *ctx, arg_AND_f3 *a){
+static bool trans_AND_f3(DisasContext *ctx, arg_AND_f3 *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_shri_i32(temp, cpu_r[a->ry], a->sa5);
     tcg_gen_and_i32(cpu_r[a->rd], cpu_r[a->rx], temp);
@@ -602,8 +588,9 @@ static bool trans_AND_f3(DisasContext *ctx, arg_AND_f3 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_AND_cond(DisasContext *ctx, arg_AND_cond *a){
+/* TODO: add tests */
+static bool trans_AND_cond(DisasContext *ctx, arg_AND_cond *a)
+{
     TCGv conVal = tcg_temp_new_i32();
     int val = checkCondition(a->cond, conVal, cpu_r, cpu_sflags);
     TCGLabel *noAction = gen_new_label();
@@ -616,7 +603,8 @@ static bool trans_AND_cond(DisasContext *ctx, arg_AND_cond *a){
     return true;
 }
 
-static bool trans_ANDH(DisasContext *ctx, arg_ANDH *a){
+static bool trans_ANDH(DisasContext *ctx, arg_ANDH *a)
+{
     TCGv imm = tcg_temp_new_i32();
     TCGv rd = cpu_r[a->rd];
 
@@ -625,7 +613,7 @@ static bool trans_ANDH(DisasContext *ctx, arg_ANDH *a){
     tcg_gen_shli_i32(imm, imm, 16);
     tcg_gen_ori_i32(imm, imm, 0x0000FFFF);
     tcg_gen_and_i32(rd, rd, imm);
-    if(a->coh){
+    if (a->coh) {
         tcg_gen_andi_i32(rd, rd, 0xFFFF0000);
     }
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], rd, 0);
@@ -635,7 +623,8 @@ static bool trans_ANDH(DisasContext *ctx, arg_ANDH *a){
     return true;
 }
 
-static bool trans_ANDL(DisasContext *ctx, arg_ANDL *a){
+static bool trans_ANDL(DisasContext *ctx, arg_ANDL *a)
+{
     TCGv imm = tcg_temp_new_i32();
     TCGv rd = cpu_r[a->rd];
 
@@ -643,26 +632,27 @@ static bool trans_ANDL(DisasContext *ctx, arg_ANDL *a){
     tcg_gen_ori_i32(imm, imm, 0xFFFF0000);
 
     tcg_gen_and_i32(rd, rd, imm);
-    if(a->coh){
+    if (a->coh) {
         tcg_gen_andi_i32(rd, rd, 0x0000FFFF);
     }
 
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], rd, 0);
     tcg_gen_shri_i32(cpu_sflags[sflagN], rd, 31);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-//TODO: add tests
-static bool trans_ANDN(DisasContext *ctx, arg_ANDN *a){
+/* TODO: add tests */
+static bool trans_ANDN(DisasContext *ctx, arg_ANDN *a)
+{
     tcg_gen_andc_i32(cpu_r[a->rd], cpu_r[a->rd], cpu_r[a->rs]);
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_ASR_f1(DisasContext *ctx, arg_ASR_f1 *a){
+static bool trans_ASR_f1(DisasContext *ctx, arg_ASR_f1 *a)
+{
     TCGv shift = tcg_temp_new_i32();
     TCGv res = tcg_temp_new_i32();
     TCGv op = tcg_temp_new_i32();
@@ -692,7 +682,8 @@ static bool trans_ASR_f1(DisasContext *ctx, arg_ASR_f1 *a){
     return true;
 }
 
-static bool trans_ASR_f2(DisasContext *ctx, arg_ASR_f2 *a){
+static bool trans_ASR_f2(DisasContext *ctx, arg_ASR_f2 *a)
+{
     int sa = a->bp4 << 1;
     sa += a->bp1;
     TCGv shift = tcg_temp_new_i32();
@@ -706,12 +697,11 @@ static bool trans_ASR_f2(DisasContext *ctx, arg_ASR_f2 *a){
 
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
     tcg_gen_shri_i32(cpu_sflags[sflagN], res, 31);
-    if(sa != 0){
+    if (sa != 0) {
         tcg_gen_subi_i32(shift, shift, 0x1);
         tcg_gen_shr_i32(op, op, shift);
         tcg_gen_andi_i32(cpu_sflags[sflagC], op, 0x00000001);
-    }
-    else{
+    } else {
         tcg_gen_movi_i32(cpu_sflags[sflagC], 0);
     }
 
@@ -719,7 +709,8 @@ static bool trans_ASR_f2(DisasContext *ctx, arg_ASR_f2 *a){
     return true;
 }
 
-static bool trans_ASR_f3(DisasContext *ctx, arg_ASR_f3 *a){
+static bool trans_ASR_f3(DisasContext *ctx, arg_ASR_f3 *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv op = tcg_temp_new_i32();
     tcg_gen_mov_i32(op, cpu_r[a->rs]);
@@ -729,11 +720,10 @@ static bool trans_ASR_f3(DisasContext *ctx, arg_ASR_f3 *a){
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
     tcg_gen_shri_i32(cpu_sflags[sflagN], res, 31);
 
-    if(a->sa5 == 0){
+    if (a->sa5 == 0) {
         tcg_gen_movi_i32(cpu_sflags[sflagC], 0x0);
-    }
-    else{
-        tcg_gen_shri_i32(cpu_sflags[sflagC], op, a->sa5-1);
+    } else {
+        tcg_gen_shri_i32(cpu_sflags[sflagC], op, a->sa5 - 1);
         tcg_gen_andi_i32(cpu_sflags[sflagC], cpu_sflags[sflagC], 0x1);
     }
 
@@ -741,7 +731,8 @@ static bool trans_ASR_f3(DisasContext *ctx, arg_ASR_f3 *a){
     return true;
 }
 
-static bool trans_BFEXTS(DisasContext *ctx, arg_BFEXTS *a){
+static bool trans_BFEXTS(DisasContext *ctx, arg_BFEXTS *a)
+{
     TCGv rd = tcg_temp_new_i32();
     TCGv rs = tcg_temp_new_i32();
     TCGv temp = tcg_temp_new_i32();
@@ -751,9 +742,9 @@ static bool trans_BFEXTS(DisasContext *ctx, arg_BFEXTS *a){
 
     tcg_gen_shri_i32(rd, rs, a->bp5);
     tcg_gen_movi_i32(temp, 0xFFFFFFFF);
-    tcg_gen_shri_i32(temp, temp, 32-a->w5);
+    tcg_gen_shri_i32(temp, temp, 32 - a->w5);
     tcg_gen_and_i32(rd, rd, temp);
-    tcg_gen_shri_i32(temp, rd, a->w5-1);
+    tcg_gen_shri_i32(temp, rd, a->w5 - 1);
     tcg_gen_brcondi_i32(TCG_COND_EQ, temp, 0x0, end);
 
     tcg_gen_movi_i32(temp, 0xFFFFFFFF);
@@ -774,9 +765,10 @@ static bool trans_BFEXTS(DisasContext *ctx, arg_BFEXTS *a){
     return true;
 }
 
-static bool trans_BFEXTU(DisasContext *ctx, arg_BFEXTU *a){
+static bool trans_BFEXTU(DisasContext *ctx, arg_BFEXTU *a)
+{
 
-    TCGv rd =tcg_temp_new_i32();
+    TCGv rd = tcg_temp_new_i32();
     TCGv rs = tcg_temp_new_i32();
     TCGv res = tcg_temp_new_i32();
     TCGv temp = tcg_temp_new_i32();
@@ -786,7 +778,7 @@ static bool trans_BFEXTU(DisasContext *ctx, arg_BFEXTU *a){
 
     tcg_gen_shri_i32(res, rs, a->bp5);
     tcg_gen_movi_i32(temp, 0xFFFFFFFF);
-    tcg_gen_shri_i32(temp, temp, 32-a->w5);
+    tcg_gen_shri_i32(temp, temp, 32 - a->w5);
     tcg_gen_and_i32(res, res, temp);
     tcg_gen_mov_i32(cpu_r[a->rd], res);
 
@@ -799,15 +791,16 @@ static bool trans_BFEXTU(DisasContext *ctx, arg_BFEXTU *a){
     return true;
 }
 
-static bool trans_BFINS(DisasContext *ctx, arg_BFINS *a){
+static bool trans_BFINS(DisasContext *ctx, arg_BFINS *a)
+{
     TCGv temp = tcg_temp_new_i32();
     TCGv mask = tcg_temp_new_i32();
     TCGv revMask = tcg_temp_new_i32();
     int bp5 = a->bp5;
-    int w5 = a->w5-1;
+    int w5 = a->w5 - 1;
 
     int maskI = 0x0;
-    for(int i = 0; i<= w5; i++){
+    for (int i = 0; i <= w5; i++) {
         maskI |= (1 << i);
     }
     int revMaskI = ~maskI;
@@ -831,7 +824,8 @@ static bool trans_BFINS(DisasContext *ctx, arg_BFINS *a){
     return true;
 }
 
-static bool trans_BLD(DisasContext *ctx, arg_BLD *a){
+static bool trans_BLD(DisasContext *ctx, arg_BLD *a)
+{
     TCGv bit = tcg_temp_new_i32();
     tcg_gen_shri_i32(bit, cpu_r[a->rd], a->bp5);
     tcg_gen_andi_i32(bit, bit, 0x00000001);
@@ -842,10 +836,11 @@ static bool trans_BLD(DisasContext *ctx, arg_BLD *a){
     return true;
 }
 
-static bool trans_BR_f1(DisasContext *ctx, arg_BR_f1 *a){
+static bool trans_BR_f1(DisasContext *ctx, arg_BR_f1 *a)
+{
     int disp = (a->disp);
 
-    //check if bit 8 is set => sign extend disp
+    /* check if bit 8 is set => sign extend disp */
     disp = sign_extend_8(disp);
     disp = disp << 1;
 
@@ -854,7 +849,7 @@ static bool trans_BR_f1(DisasContext *ctx, arg_BR_f1 *a){
     int val = checkCondition(a->rd, reg, cpu_r, cpu_sflags);
 
     tcg_gen_brcondi_i32(TCG_COND_NE, reg, val, no_branch);
-    gen_goto_tb(ctx, 0, ctx->base.pc_next+disp);
+    gen_goto_tb(ctx, 0, ctx->base.pc_next + disp);
 
     gen_set_label(no_branch);
 
@@ -863,12 +858,13 @@ static bool trans_BR_f1(DisasContext *ctx, arg_BR_f1 *a){
     return true;
 }
 
-static bool trans_BR_f2(DisasContext *ctx, arg_BR_f2 *a){
+static bool trans_BR_f2(DisasContext *ctx, arg_BR_f2 *a)
+{
     int disp = (a->disp2 << 17);
     disp |= (a->disp1 << 16);
     disp |= (a->disp0);
 
-    if(disp >> 20 == 1){
+    if (disp >> 20 == 1) {
         disp |= 0xFFE00000;
     }
     disp = disp << 1;
@@ -879,7 +875,7 @@ static bool trans_BR_f2(DisasContext *ctx, arg_BR_f2 *a){
     int val = checkCondition(a->cond, reg, cpu_r, cpu_sflags);
 
     tcg_gen_brcondi_i32(TCG_COND_NE, reg, val, no_branch);
-    gen_goto_tb(ctx, 0, ctx->base.pc_next+disp);
+    gen_goto_tb(ctx, 0, ctx->base.pc_next + disp);
 
     gen_set_label(no_branch);
 
@@ -888,8 +884,9 @@ static bool trans_BR_f2(DisasContext *ctx, arg_BR_f2 *a){
     return true;
 }
 
-//TODO: Implement according to manual
-static bool trans_BREAKPOINT(DisasContext *ctx, arg_BREAKPOINT *a){
+/* TODO: Implement according to manual */
+static bool trans_BREAKPOINT(DisasContext *ctx, arg_BREAKPOINT *a)
+{
     tcg_gen_movi_tl(cpu_r[PC_REG], ctx->base.pc_next - 2);
     gen_helper_debug(tcg_env);
     ctx->base.is_jmp = DISAS_EXIT;
@@ -897,15 +894,16 @@ static bool trans_BREAKPOINT(DisasContext *ctx, arg_BREAKPOINT *a){
     return false;
 }
 
-static bool trans_BREV_r(DisasContext *ctx, arg_BREV_r *a){
+static bool trans_BREV_r(DisasContext *ctx, arg_BREV_r *a)
+{
     TCGv temp = tcg_temp_new_i32();
     TCGv new_val = tcg_temp_new_i32();
     tcg_gen_movi_i32(temp, 0);
 
-    for(int i = 0; i<32; i++){
+    for (int i = 0; i < 32; i++) {
         tcg_gen_shri_i32(new_val, cpu_r[a->rd], i);
         tcg_gen_andi_i32(new_val, new_val, 0x00000001);
-        tcg_gen_shli_i32(new_val, new_val, 31-i);
+        tcg_gen_shli_i32(new_val, new_val, 31 - i);
         tcg_gen_add_i32(temp, temp, new_val);
     }
     tcg_gen_mov_i32(cpu_r[a->rd], temp);
@@ -915,7 +913,8 @@ static bool trans_BREV_r(DisasContext *ctx, arg_BREV_r *a){
     return true;
 }
 
-static bool trans_BST(DisasContext *ctx, arg_BST *a){
+static bool trans_BST(DisasContext *ctx, arg_BST *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_shli_i32(temp, cpu_sflags[sflagC], a->bp5);
     tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd], temp);
@@ -936,17 +935,19 @@ static bool trans_PREF(DisasContext *ctx, arg_PREF *a)
     return true;
 }
 
-static bool trans_CASTSB(DisasContext *ctx, arg_CASTSB *a){
+static bool trans_CASTSB(DisasContext *ctx, arg_CASTSB *a)
+{
     tcg_gen_ext8s_i32(cpu_r[a->rd], cpu_r[a->rd]);
 
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
     tcg_gen_shri_i32(cpu_sflags[sflagC], cpu_r[a->rd], 31);
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
-    ctx->base.pc_next += 2; //verified
+    ctx->base.pc_next += 2; /* verified */
     return true;
 }
 
-static bool trans_CASTSH(DisasContext *ctx, arg_CASTSH *a){
+static bool trans_CASTSH(DisasContext *ctx, arg_CASTSH *a)
+{
     tcg_gen_ext16s_i32(cpu_r[a->rd], cpu_r[a->rd]);
 
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
@@ -957,7 +958,8 @@ static bool trans_CASTSH(DisasContext *ctx, arg_CASTSH *a){
     return true;
 }
 
-static bool trans_CASTUB(DisasContext *ctx, arg_CASTUB *a){
+static bool trans_CASTUB(DisasContext *ctx, arg_CASTUB *a)
+{
     tcg_gen_andi_i32(cpu_r[a->rd], cpu_r[a->rd], 0x000000FF);
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
     tcg_gen_shri_i32(cpu_sflags[sflagC], cpu_r[a->rd], 31);
@@ -966,7 +968,8 @@ static bool trans_CASTUB(DisasContext *ctx, arg_CASTUB *a){
     return true;
 }
 
-static bool trans_CASTUH(DisasContext *ctx, arg_CASTUH *a){
+static bool trans_CASTUH(DisasContext *ctx, arg_CASTUH *a)
+{
     tcg_gen_andi_i32(cpu_r[a->rd], cpu_r[a->rd], 0x0000FFFF);
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
     tcg_gen_shri_i32(cpu_sflags[sflagC], cpu_r[a->rd], 31);
@@ -975,7 +978,8 @@ static bool trans_CASTUH(DisasContext *ctx, arg_CASTUH *a){
     return true;
 }
 
-static bool trans_CBR(DisasContext *ctx, arg_CBR *a){
+static bool trans_CBR(DisasContext *ctx, arg_CBR *a)
+{
     int bp = 0;
     bp = a->bp4 << 1;
     bp += a->bp1;
@@ -991,7 +995,8 @@ static bool trans_CBR(DisasContext *ctx, arg_CBR *a){
     return true;
 }
 
-static bool trans_CLZ(DisasContext *ctx, arg_CLZ *a){
+static bool trans_CLZ(DisasContext *ctx, arg_CLZ *a)
+{
     TCGLabel *head = gen_new_label();
     TCGLabel *end = gen_new_label();
     TCGLabel *ifT = gen_new_label();
@@ -1025,20 +1030,23 @@ static bool trans_CLZ(DisasContext *ctx, arg_CLZ *a){
     return true;
 }
 
-static bool trans_COM(DisasContext *ctx, arg_COM *a){
+static bool trans_COM(DisasContext *ctx, arg_COM *a)
+{
     tcg_gen_not_i32(cpu_r[a->rd], cpu_r[a->rd]);
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_COP(DisasContext *ctx, arg_COP *a){
-    //This instruction is processor specific!
+static bool trans_COP(DisasContext *ctx, arg_COP *a)
+{
+    /* This instruction is processor specific! */
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_CPB(DisasContext *ctx, arg_CPB *a){
+static bool trans_CPB(DisasContext *ctx, arg_CPB *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv rd = tcg_temp_new_i32();
     TCGv rs = tcg_temp_new_i32();
@@ -1047,10 +1055,10 @@ static bool trans_CPB(DisasContext *ctx, arg_CPB *a){
     tcg_gen_andi_i32(rs, cpu_r[a->rs], 0x000000FF);
     tcg_gen_sub_i32(res, rd, rs);
 
-    //Z-flag
+    /* Z-flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_shri_i32(res, res, 7);
     tcg_gen_andi_i32(res, res, 0x00000001);
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
@@ -1060,17 +1068,18 @@ static bool trans_CPB(DisasContext *ctx, arg_CPB *a){
     tcg_gen_shri_i32(rs, rs, 7);
     tcg_gen_andi_i32(rs, rs, 0x00000001);
 
-    //V-flag
+    /* V-flag */
     set_v_flag_cp(rd, rs, res, cpu_sflags);
 
-    //C-flag
+    /* C-flag */
     set_c_flag_cp(rd, rs, res, cpu_sflags);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_CPH(DisasContext *ctx, arg_CPH *a){
+static bool trans_CPH(DisasContext *ctx, arg_CPH *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv rd = tcg_temp_new_i32();
     TCGv rs = tcg_temp_new_i32();
@@ -1080,10 +1089,10 @@ static bool trans_CPH(DisasContext *ctx, arg_CPH *a){
     tcg_gen_sub_i32(res, rd, rs);
     tcg_gen_andi_i32(res, res, 0x0000FFFF);
 
-    //Z-flag
+    /* Z-flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_shri_i32(res, res, 15);
     tcg_gen_andi_i32(res, res, 0x00000001);
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
@@ -1093,17 +1102,18 @@ static bool trans_CPH(DisasContext *ctx, arg_CPH *a){
     tcg_gen_shri_i32(rs, rs, 15);
     tcg_gen_andi_i32(rs, rs, 0x00000001);
 
-    //V-flag
+    /* V-flag */
     set_v_flag_cp(rd, rs, res, cpu_sflags);
 
-    //C-flag
+    /* C-flag */
     set_c_flag_cp(rd, rs, res, cpu_sflags);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_CPW_f1(DisasContext *ctx, arg_CPW_f1 *a){
+static bool trans_CPW_f1(DisasContext *ctx, arg_CPW_f1 *a)
+{
     TCGv Rd = tcg_temp_new_i32();
     TCGv Rs = tcg_temp_new_i32();
 
@@ -1116,7 +1126,8 @@ static bool trans_CPW_f1(DisasContext *ctx, arg_CPW_f1 *a){
     return true;
 }
 
-static bool trans_CPW_f2(DisasContext *ctx, arg_CPW_f2 *a){
+static bool trans_CPW_f2(DisasContext *ctx, arg_CPW_f2 *a)
+{
     TCGv Rdt = cpu_r[a->rd];
 
     TCGv Rd = tcg_temp_new_i32();
@@ -1124,7 +1135,7 @@ static bool trans_CPW_f2(DisasContext *ctx, arg_CPW_f2 *a){
 
     tcg_gen_mov_i32(Rd, Rdt);
     int imm = a->imm6;
-    if(a->imm6 >> 5 == 1){
+    if (a->imm6 >> 5 == 1) {
         imm |= 0xFFFFFFC0;
     }
     tcg_gen_movi_i32(Rs, imm);
@@ -1135,13 +1146,14 @@ static bool trans_CPW_f2(DisasContext *ctx, arg_CPW_f2 *a){
     return true;
 }
 
-static bool trans_CPW_f3(DisasContext *ctx, arg_CPW_f3 *a){
-    int mmI = ( a->immu) <<17;
+static bool trans_CPW_f3(DisasContext *ctx, arg_CPW_f3 *a)
+{
+    int mmI = (a->immu) << 17;
     mmI |= (a->immm) << 16;
     mmI |= (a->imml);
 
-    //Sign extend
-    if(mmI >> 20){
+    /* Sign extend */
+    if (mmI >> 20) {
         mmI |= 0xFFE00000;
     }
 
@@ -1159,8 +1171,9 @@ static bool trans_CPW_f3(DisasContext *ctx, arg_CPW_f3 *a){
     return true;
 }
 
-//TODO: add more tests
-static bool trans_CPC_f1(DisasContext *ctx, arg_CPC_f1 *a){
+/* TODO: add more tests */
+static bool trans_CPC_f1(DisasContext *ctx, arg_CPC_f1 *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv rd = tcg_temp_new_i32();
     TCGv rs = tcg_temp_new_i32();
@@ -1176,8 +1189,9 @@ static bool trans_CPC_f1(DisasContext *ctx, arg_CPC_f1 *a){
     return true;
 }
 
-//TODO: add more tests
-static bool trans_CPC_f2(DisasContext *ctx, arg_CPC_f2 *a){
+/* TODO: add more tests */
+static bool trans_CPC_f2(DisasContext *ctx, arg_CPC_f2 *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv rd = tcg_temp_new_i32();
     TCGv rs = tcg_temp_new_i32();
@@ -1192,14 +1206,16 @@ static bool trans_CPC_f2(DisasContext *ctx, arg_CPC_f2 *a){
     return true;
 }
 
-static bool trans_CSRF(DisasContext *ctx, arg_CSRF *a){
+static bool trans_CSRF(DisasContext *ctx, arg_CSRF *a)
+{
     tcg_gen_movi_i32(cpu_sflags[a->bp5], 0);
     ctx->base.pc_next += 2;
     return true;
 }
 
-//TODO: add tests
-static bool trans_CSRFCZ(DisasContext *ctx, arg_CSRFCZ *a){
+/* TODO: add tests */
+static bool trans_CSRFCZ(DisasContext *ctx, arg_CSRFCZ *a)
+{
     tcg_gen_mov_i32(cpu_sflags[sflagC], cpu_sflags[a->bp5]);
     tcg_gen_mov_i32(cpu_sflags[sflagZ], cpu_sflags[a->bp5]);
 
@@ -1207,7 +1223,8 @@ static bool trans_CSRFCZ(DisasContext *ctx, arg_CSRFCZ *a){
     return true;
 }
 
-static bool trans_DIVS(DisasContext *ctx, arg_DIVS *a){
+static bool trans_DIVS(DisasContext *ctx, arg_DIVS *a)
+{
     TCGv rx = tcg_temp_new_i32();
     TCGv ry = tcg_temp_new_i32();
 
@@ -1215,13 +1232,14 @@ static bool trans_DIVS(DisasContext *ctx, arg_DIVS *a){
     tcg_gen_mov_i32(ry, cpu_r[a->ry]);
 
     tcg_gen_div_i32(cpu_r[a->rd], rx, ry);
-    tcg_gen_rem_i32(cpu_r[a->rd+1], rx, ry);
+    tcg_gen_rem_i32(cpu_r[a->rd + 1], rx, ry);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_DIVU(DisasContext *ctx, arg_DIVU *a){
+static bool trans_DIVU(DisasContext *ctx, arg_DIVU *a)
+{
     TCGv rx = tcg_temp_new_i32();
     TCGv ry = tcg_temp_new_i32();
 
@@ -1229,13 +1247,14 @@ static bool trans_DIVU(DisasContext *ctx, arg_DIVU *a){
     tcg_gen_mov_i32(ry, cpu_r[a->ry]);
 
     tcg_gen_divu_i32(cpu_r[a->rd], rx, ry);
-    tcg_gen_remu_i32(cpu_r[a->rd+1], rx,ry);
+    tcg_gen_remu_i32(cpu_r[a->rd + 1], rx, ry);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_EOR_f1(DisasContext *ctx, arg_EOR_f1 *a){
+static bool trans_EOR_f1(DisasContext *ctx, arg_EOR_f1 *a)
+{
     tcg_gen_xor_i32(cpu_r[a->rd], cpu_r[a->rd], cpu_r[a->rs]);
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
@@ -1244,7 +1263,8 @@ static bool trans_EOR_f1(DisasContext *ctx, arg_EOR_f1 *a){
     return true;
 }
 
-static bool trans_EOR_f2(DisasContext *ctx, arg_EOR_f2 *a){
+static bool trans_EOR_f2(DisasContext *ctx, arg_EOR_f2 *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_shli_i32(temp, cpu_r[a->ry], a->sa5);
     tcg_gen_xor_i32(cpu_r[a->rd], cpu_r[a->rx], temp);
@@ -1256,7 +1276,8 @@ static bool trans_EOR_f2(DisasContext *ctx, arg_EOR_f2 *a){
     return true;
 }
 
-static bool trans_EOR_f3(DisasContext *ctx, arg_EOR_f3 *a){
+static bool trans_EOR_f3(DisasContext *ctx, arg_EOR_f3 *a)
+{
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_shri_i32(temp, cpu_r[a->ry], a->sa5);
     tcg_gen_xor_i32(cpu_r[a->rd], cpu_r[a->rx], temp);
@@ -1268,8 +1289,9 @@ static bool trans_EOR_f3(DisasContext *ctx, arg_EOR_f3 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_EOR_cond(DisasContext *ctx, arg_EOR_cond *a){
+/* TODO: add tests */
+static bool trans_EOR_cond(DisasContext *ctx, arg_EOR_cond *a)
+{
     TCGv reg = tcg_temp_new_i32();
     TCGLabel *exit = gen_new_label();
     int val = checkCondition(a->cond, reg, cpu_r, cpu_sflags);
@@ -1282,7 +1304,8 @@ static bool trans_EOR_cond(DisasContext *ctx, arg_EOR_cond *a){
     return true;
 }
 
-static bool trans_EORH(DisasContext *ctx, arg_EORH *a){
+static bool trans_EORH(DisasContext *ctx, arg_EORH *a)
+{
     TCGv imm = tcg_temp_new_i32();
     tcg_gen_movi_i32(imm, a->imm16);
 
@@ -1291,12 +1314,12 @@ static bool trans_EORH(DisasContext *ctx, arg_EORH *a){
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_EORL(DisasContext *ctx, arg_EORH *a){
+static bool trans_EORL(DisasContext *ctx, arg_EORH *a)
+{
     TCGv imm = tcg_temp_new_i32();
     tcg_gen_movi_i32(imm, a->imm16);
 
@@ -1313,13 +1336,15 @@ static bool trans_BUG(DisasContext *ctx, arg_BUG *a)
     return true;
 }
 
-static bool trans_FRS(DisasContext *ctx, arg_FRS *a){
-    //Hardware specific instruction.
+static bool trans_FRS(DisasContext *ctx, arg_FRS *a)
+{
+    /* Hardware specific instruction. */
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_ICALL(DisasContext *ctx, arg_ICALL *a){
+static bool trans_ICALL(DisasContext *ctx, arg_ICALL *a)
+{
     TCGv target = tcg_temp_new_i32();
 
     tcg_gen_mov_i32(target, cpu_r[a->rd]);
@@ -1331,10 +1356,11 @@ static bool trans_ICALL(DisasContext *ctx, arg_ICALL *a){
     return true;
 }
 
-static bool trans_LDD_f1(DisasContext *ctx, arg_LDD_f1 *a){
+static bool trans_LDD_f1(DisasContext *ctx, arg_LDD_f1 *a)
+{
     TCGv ptr = cpu_r[a->rp];
-    TCGv rd = cpu_r[a->rd*2];
-    TCGv rdp = cpu_r[a->rd*2+1];
+    TCGv rd = cpu_r[a->rd * 2];
+    TCGv rdp = cpu_r[a->rd * 2 + 1];
 
     tcg_gen_qemu_ld_i32(rdp, ptr, 0, MO_BEUL);
     tcg_gen_addi_i32(ptr, ptr, 4);
@@ -1346,11 +1372,12 @@ static bool trans_LDD_f1(DisasContext *ctx, arg_LDD_f1 *a){
     return true;
 }
 
-static bool trans_LDD_f2(DisasContext *ctx, arg_LDD_f2 *a){
+static bool trans_LDD_f2(DisasContext *ctx, arg_LDD_f2 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[a->rp]);
-    TCGv rd = cpu_r[a->rd*2];
-    TCGv rdp = cpu_r[a->rd*2+1];
+    TCGv rd = cpu_r[a->rd * 2];
+    TCGv rdp = cpu_r[a->rd * 2 + 1];
 
     tcg_gen_subi_i32(ptr, ptr, 8);
     tcg_gen_qemu_ld_i32(rdp, ptr, 0, MO_BEUL);
@@ -1366,11 +1393,12 @@ static bool trans_LDD_f2(DisasContext *ctx, arg_LDD_f2 *a){
     return true;
 }
 
-static bool trans_LDD_f3(DisasContext *ctx, arg_LDD_f3 *a){
+static bool trans_LDD_f3(DisasContext *ctx, arg_LDD_f3 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[a->rp]);
-    TCGv rd = cpu_r[a->rd*2];
-    TCGv rdp = cpu_r[a->rd*2+1];
+    TCGv rd = cpu_r[a->rd * 2];
+    TCGv rdp = cpu_r[a->rd * 2 + 1];
 
     tcg_gen_qemu_ld_i32(rdp, ptr, 0, MO_BEUL);
     tcg_gen_addi_i32(ptr, ptr, 4);
@@ -1381,20 +1409,21 @@ static bool trans_LDD_f3(DisasContext *ctx, arg_LDD_f3 *a){
     return true;
 }
 
-static bool trans_LDD_f4(DisasContext *ctx, arg_LDD_f4 *a){
+static bool trans_LDD_f4(DisasContext *ctx, arg_LDD_f4 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[a->rp]);
     TCGv disp = tcg_temp_new_i32();
 
     int dispI = a->disp16;
-    if(dispI >> 15){
+    if (dispI >> 15) {
         dispI |= 0xFFFF0000;
     }
     tcg_gen_movi_i32(disp, dispI);
     tcg_gen_add_i32(ptr, ptr, disp);
 
-    TCGv rd = cpu_r[a->rs*2];
-    TCGv rdp = cpu_r[a->rs*2+1];
+    TCGv rd = cpu_r[a->rs * 2];
+    TCGv rdp = cpu_r[a->rs * 2 + 1];
 
     tcg_gen_qemu_ld_i32(rdp, ptr, 0, MO_BEUL);
     tcg_gen_addi_i32(ptr, ptr, 4);
@@ -1405,15 +1434,15 @@ static bool trans_LDD_f4(DisasContext *ctx, arg_LDD_f4 *a){
     return true;
 }
 
-static bool trans_LDD_f5(DisasContext *ctx, arg_LDD_f5 *a){
+static bool trans_LDD_f5(DisasContext *ctx, arg_LDD_f5 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
 
     tcg_gen_shli_i32(ptr, cpu_r[a->ry], a->sa);
     tcg_gen_add_i32(ptr, ptr, cpu_r[a->rx]);
 
-
     TCGv rd = cpu_r[a->rd];
-    TCGv rdp = cpu_r[a->rd+1];
+    TCGv rdp = cpu_r[a->rd + 1];
 
     tcg_gen_qemu_ld_i32(rdp, ptr, 0, MO_BEUL);
     tcg_gen_addi_i32(ptr, ptr, 4);
@@ -1424,9 +1453,10 @@ static bool trans_LDD_f5(DisasContext *ctx, arg_LDD_f5 *a){
     return true;
 }
 
-static bool trans_LDsb_f1(DisasContext *ctx, arg_LDsb_f1 *a){
+static bool trans_LDsb_f1(DisasContext *ctx, arg_LDsb_f1 *a)
+{
     int dispI = a->disp16;
-    if(dispI >> 15){
+    if (dispI >> 15) {
         dispI |= 0xFFFF0000;
     }
 
@@ -1440,8 +1470,9 @@ static bool trans_LDsb_f1(DisasContext *ctx, arg_LDsb_f1 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDsb_f2(DisasContext *ctx, arg_LDsb_f2 *a){
+/* TODO: add tests */
+static bool trans_LDsb_f2(DisasContext *ctx, arg_LDsb_f2 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[a->ry]);
     tcg_gen_shli_i32(ptr, ptr, a->sa);
@@ -1453,8 +1484,9 @@ static bool trans_LDsb_f2(DisasContext *ctx, arg_LDsb_f2 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDsb_cond(DisasContext *ctx, arg_LDsb_cond *a){
+/* TODO: add tests */
+static bool trans_LDsb_cond(DisasContext *ctx, arg_LDsb_cond *a)
+{
     TCGv reg = tcg_temp_new_i32();
     TCGLabel *exit = gen_new_label();
     int val = checkCondition(a->cond4, reg, cpu_r, cpu_sflags);
@@ -1465,13 +1497,13 @@ static bool trans_LDsb_cond(DisasContext *ctx, arg_LDsb_cond *a){
 
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], ptr, 0, MO_SB);
 
-
     gen_set_label(exit);
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_LDub_f1(DisasContext *ctx, arg_LDub_f1 *a){
+static bool trans_LDub_f1(DisasContext *ctx, arg_LDub_f1 *a)
+{
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_UB);
     tcg_gen_addi_i32(cpu_r[a->rp], cpu_r[a->rp], 0x1);
 
@@ -1479,7 +1511,8 @@ static bool trans_LDub_f1(DisasContext *ctx, arg_LDub_f1 *a){
     return true;
 }
 
-static bool trans_LDub_f2(DisasContext *ctx, arg_LDub_f2 *a){
+static bool trans_LDub_f2(DisasContext *ctx, arg_LDub_f2 *a)
+{
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_UB);
     tcg_gen_subi_i32(cpu_r[a->rp], cpu_r[a->rp], 0x1);
 
@@ -1487,7 +1520,8 @@ static bool trans_LDub_f2(DisasContext *ctx, arg_LDub_f2 *a){
     return true;
 }
 
-static bool trans_LDub_f3(DisasContext *ctx, arg_LDub_f3 *a){
+static bool trans_LDub_f3(DisasContext *ctx, arg_LDub_f3 *a)
+{
 
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_addi_i32(ptr, cpu_r[a->rp], a->disp3);
@@ -1498,10 +1532,11 @@ static bool trans_LDub_f3(DisasContext *ctx, arg_LDub_f3 *a){
     return true;
 }
 
-static bool trans_LDUB_f4(DisasContext *ctx, arg_LDUB_f4 *a){
+static bool trans_LDUB_f4(DisasContext *ctx, arg_LDUB_f4 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     int disp = a->disp16;
-    if(disp >> 15){
+    if (disp >> 15) {
         disp |= 0xFFFF0000;
     }
     tcg_gen_movi_i32(ptr, disp);
@@ -1513,7 +1548,8 @@ static bool trans_LDUB_f4(DisasContext *ctx, arg_LDUB_f4 *a){
     return true;
 }
 
-static bool trans_LDub_f5(DisasContext *ctx, arg_LDub_f5 *a){
+static bool trans_LDub_f5(DisasContext *ctx, arg_LDub_f5 *a)
+{
 
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_shli_i32(ptr, cpu_r[a->ry], a->sa);
@@ -1525,8 +1561,8 @@ static bool trans_LDub_f5(DisasContext *ctx, arg_LDub_f5 *a){
     return true;
 }
 
-static bool trans_LDUB_cond(DisasContext *ctx, arg_LDUB_cond *a){
-
+static bool trans_LDUB_cond(DisasContext *ctx, arg_LDUB_cond *a)
+{
 
     TCGLabel *exit = gen_new_label();
 
@@ -1546,8 +1582,9 @@ static bool trans_LDUB_cond(DisasContext *ctx, arg_LDUB_cond *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDSH_f1(DisasContext *ctx, arg_LDSH_f1 *a){
+/* TODO: add tests */
+static bool trans_LDSH_f1(DisasContext *ctx, arg_LDSH_f1 *a)
+{
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_BESW);
     tcg_gen_addi_i32(cpu_r[a->rp], cpu_r[a->rp], 0x2);
 
@@ -1555,15 +1592,17 @@ static bool trans_LDSH_f1(DisasContext *ctx, arg_LDSH_f1 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDSH_f2(DisasContext *ctx, arg_LDSH_f2 *a){
+/* TODO: add tests */
+static bool trans_LDSH_f2(DisasContext *ctx, arg_LDSH_f2 *a)
+{
     tcg_gen_subi_i32(cpu_r[a->rp], cpu_r[a->rp], 0x2);
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_BESW);
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_LDSH_f3(DisasContext *ctx, arg_LDSH_f3 *a){
+static bool trans_LDSH_f3(DisasContext *ctx, arg_LDSH_f3 *a)
+{
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_movi_i32(addr, a->disp3 << 1);
     tcg_gen_add_i32(addr, addr, cpu_r[a->rp]);
@@ -1573,10 +1612,11 @@ static bool trans_LDSH_f3(DisasContext *ctx, arg_LDSH_f3 *a){
     return true;
 }
 
-static bool trans_LDSH_f4(DisasContext *ctx, arg_LDSH_f4 *a){
+static bool trans_LDSH_f4(DisasContext *ctx, arg_LDSH_f4 *a)
+{
     TCGv addr = tcg_temp_new_i32();
     int disp = a->disp16;
-    if(disp>> 15 == 1){
+    if (disp >> 15 == 1) {
         disp |= 0xFFFF0000;
     }
 
@@ -1587,7 +1627,8 @@ static bool trans_LDSH_f4(DisasContext *ctx, arg_LDSH_f4 *a){
     return true;
 }
 
-static bool trans_LDSH_f5(DisasContext *ctx, arg_LDSH_f5 *a){
+static bool trans_LDSH_f5(DisasContext *ctx, arg_LDSH_f5 *a)
+{
     TCGv addr = tcg_temp_new_i32();
 
     tcg_gen_shli_i32(addr, cpu_r[a->ry], a->sa);
@@ -1598,7 +1639,8 @@ static bool trans_LDSH_f5(DisasContext *ctx, arg_LDSH_f5 *a){
     return true;
 }
 
-static bool trans_LDSH_cond(DisasContext *ctx, arg_LDSH_cond *a){
+static bool trans_LDSH_cond(DisasContext *ctx, arg_LDSH_cond *a)
+{
     TCGLabel *no_load = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -1618,7 +1660,8 @@ static bool trans_LDSH_cond(DisasContext *ctx, arg_LDSH_cond *a){
     return true;
 }
 
-static bool trans_LDUH_f1(DisasContext *ctx, arg_LDUH_f1 *a){
+static bool trans_LDUH_f1(DisasContext *ctx, arg_LDUH_f1 *a)
+{
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_BEUW);
     tcg_gen_addi_i32(cpu_r[a->rp], cpu_r[a->rp], 2);
 
@@ -1626,8 +1669,9 @@ static bool trans_LDUH_f1(DisasContext *ctx, arg_LDUH_f1 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDUH_f2(DisasContext *ctx, arg_LDUH_f2 *a){
+/* TODO: add tests */
+static bool trans_LDUH_f2(DisasContext *ctx, arg_LDUH_f2 *a)
+{
     tcg_gen_subi_i32(cpu_r[a->rp], cpu_r[a->rp], 2);
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_BEUW);
 
@@ -1635,18 +1679,20 @@ static bool trans_LDUH_f2(DisasContext *ctx, arg_LDUH_f2 *a){
     return true;
 }
 
-static bool trans_LDUH_f3(DisasContext *ctx, arg_LDUH_f3 *a){
+static bool trans_LDUH_f3(DisasContext *ctx, arg_LDUH_f3 *a)
+{
     TCGv addr = tcg_temp_new_i32();
-    tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp3<<1);
+    tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp3 << 1);
     tcg_gen_qemu_ld_tl(cpu_r[a->rd], addr, 0x0, MO_BEUW);
 
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_LDUH_f4(DisasContext *ctx, arg_LDUH_f4 *a){
+static bool trans_LDUH_f4(DisasContext *ctx, arg_LDUH_f4 *a)
+{
     int disp = a->disp16;
-    if(disp>> 15 == 1){
+    if (disp >> 15 == 1) {
         disp |= 0xFFFF0000;
     }
 
@@ -1658,8 +1704,9 @@ static bool trans_LDUH_f4(DisasContext *ctx, arg_LDUH_f4 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDUH_f5(DisasContext *ctx, arg_LDUH_f5 *a){
+/* TODO: add tests */
+static bool trans_LDUH_f5(DisasContext *ctx, arg_LDUH_f5 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[a->ry]);
     tcg_gen_shli_i32(ptr, ptr, a->sa);
@@ -1671,7 +1718,8 @@ static bool trans_LDUH_f5(DisasContext *ctx, arg_LDUH_f5 *a){
     return true;
 }
 
-static bool trans_LDUH_cond(DisasContext *ctx, arg_LDUH_cond *a){
+static bool trans_LDUH_cond(DisasContext *ctx, arg_LDUH_cond *a)
+{
     TCGLabel *no_load = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -1691,12 +1739,12 @@ static bool trans_LDUH_cond(DisasContext *ctx, arg_LDUH_cond *a){
     return true;
 }
 
-
-static bool trans_LDW_f1(DisasContext *ctx, arg_LDW_f1 *a){
+static bool trans_LDW_f1(DisasContext *ctx, arg_LDW_f1 *a)
+{
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_BEUL);
     tcg_gen_addi_i32(cpu_r[a->rp], cpu_r[a->rp], 0x4);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -1704,12 +1752,13 @@ static bool trans_LDW_f1(DisasContext *ctx, arg_LDW_f1 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDW_f2(DisasContext *ctx, arg_LDW_f2 *a){
+/* TODO: add tests */
+static bool trans_LDW_f2(DisasContext *ctx, arg_LDW_f2 *a)
+{
     tcg_gen_subi_i32(cpu_r[a->rp], cpu_r[a->rp], 0x4);
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], cpu_r[a->rp], 0x0, MO_BEUL);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -1717,14 +1766,15 @@ static bool trans_LDW_f2(DisasContext *ctx, arg_LDW_f2 *a){
     return true;
 }
 
-static bool trans_LDW_f3(DisasContext *ctx, arg_LDW_f3 *a){
-    int dispI = a->disp5 <<2;
+static bool trans_LDW_f3(DisasContext *ctx, arg_LDW_f3 *a)
+{
+    int dispI = a->disp5 << 2;
 
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_addi_i32(ptr, cpu_r[a->rp], dispI);
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], ptr, 0x0, MO_BEUL);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -1732,11 +1782,12 @@ static bool trans_LDW_f3(DisasContext *ctx, arg_LDW_f3 *a){
     return true;
 }
 
-static bool trans_LDW_f4(DisasContext *ctx, arg_LDW_f4 *a){
+static bool trans_LDW_f4(DisasContext *ctx, arg_LDW_f4 *a)
+{
     int disp = a->disp16;
 
-    //Sign extend
-    if(disp >> 15){
+    /* Sign extend */
+    if (disp >> 15) {
         disp |= 0xFFFF0000;
     }
     TCGv ptr = tcg_temp_new_i32();
@@ -1744,7 +1795,7 @@ static bool trans_LDW_f4(DisasContext *ctx, arg_LDW_f4 *a){
 
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], ptr, 0x0, MO_BEUL);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -1752,14 +1803,15 @@ static bool trans_LDW_f4(DisasContext *ctx, arg_LDW_f4 *a){
     return true;
 }
 
-static bool trans_LDW_f5(DisasContext *ctx, arg_LDW_f5 *a){
+static bool trans_LDW_f5(DisasContext *ctx, arg_LDW_f5 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_shli_i32(ptr, cpu_r[a->ry], a->sa);
     tcg_gen_add_i32(ptr, ptr, cpu_r[a->rx]);
 
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], ptr, 0x0, MO_BEUL);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -1767,39 +1819,40 @@ static bool trans_LDW_f5(DisasContext *ctx, arg_LDW_f5 *a){
     return true;
 }
 
-static bool trans_LDW_f6(DisasContext *ctx, arg_LDW_f6 *a){
+static bool trans_LDW_f6(DisasContext *ctx, arg_LDW_f6 *a)
+{
     int part = (a->x << 1) + a->y;
     TCGv ptr = tcg_temp_new_i32();
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[a->rx]);
 
     switch (part) {
-        case 0x0:
-            tcg_gen_andi_i32(temp, cpu_r[a->ry], 0x000000FF);
-            break;
-        case 0x1:
-            tcg_gen_andi_i32(temp, cpu_r[a->ry], 0x0000FF00);
-            tcg_gen_shri_i32(temp, temp, 8);
-            break;
-        case 0x2:
-            tcg_gen_andi_i32(temp, cpu_r[a->ry], 0x00FF0000);
-            tcg_gen_shri_i32(temp, temp, 16);
-            break;
-        case 0x3:
-            tcg_gen_andi_i32(temp, cpu_r[a->ry], 0xFF000000);
-            tcg_gen_shri_i32(temp, temp, 24);
-            break;
-        default:
-            printf("[LDW_f6] ERROR: undefined condition %d\n", part);
-            g_assert_not_reached();
-            return false;
+    case 0x0:
+        tcg_gen_andi_i32(temp, cpu_r[a->ry], 0x000000FF);
+        break;
+    case 0x1:
+        tcg_gen_andi_i32(temp, cpu_r[a->ry], 0x0000FF00);
+        tcg_gen_shri_i32(temp, temp, 8);
+        break;
+    case 0x2:
+        tcg_gen_andi_i32(temp, cpu_r[a->ry], 0x00FF0000);
+        tcg_gen_shri_i32(temp, temp, 16);
+        break;
+    case 0x3:
+        tcg_gen_andi_i32(temp, cpu_r[a->ry], 0xFF000000);
+        tcg_gen_shri_i32(temp, temp, 24);
+        break;
+    default:
+        printf("[LDW_f6] ERROR: undefined condition %d\n", part);
+        g_assert_not_reached();
+        return false;
     }
     tcg_gen_shli_i32(temp, temp, 2);
     tcg_gen_add_i32(ptr, ptr, temp);
 
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], ptr, 0x0, MO_BEUL);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -1807,7 +1860,8 @@ static bool trans_LDW_f6(DisasContext *ctx, arg_LDW_f6 *a){
     return true;
 }
 
-static bool trans_LDW_cond(DisasContext *ctx, arg_LDW_cond *a){
+static bool trans_LDW_cond(DisasContext *ctx, arg_LDW_cond *a)
+{
     int disp = a->disp9 << 2;
     TCGLabel *no_ld = gen_new_label();
 
@@ -1820,16 +1874,17 @@ static bool trans_LDW_cond(DisasContext *ctx, arg_LDW_cond *a){
     tcg_gen_add_i32(ptr, ptr, cpu_r[a->rp]);
     tcg_gen_qemu_ld_i32(cpu_r[a->rd], ptr, 0x0, MO_BEUL);
     gen_set_label(no_ld);
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 4;
     return true;
 }
 
-// LDC, processor depending instruction
+/* LDC, processor depending instruction */
 
-static bool trans_LDDPC(DisasContext *ctx, arg_LDDPC *a){
+static bool trans_LDDPC(DisasContext *ctx, arg_LDDPC *a)
+{
     TCGv addr = tcg_temp_new_i32();
     TCGv Rd = cpu_r[a->rd];
     TCGv PC = cpu_r[PC_REG];
@@ -1839,14 +1894,15 @@ static bool trans_LDDPC(DisasContext *ctx, arg_LDDPC *a){
 
     tcg_gen_qemu_ld_tl(Rd, addr, 0, MO_BEUL);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_LDDSP(DisasContext *ctx, arg_LDDSP *a){
+static bool trans_LDDSP(DisasContext *ctx, arg_LDDSP *a)
+{
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_andi_i32(addr, cpu_r[SP_REG], 0xFFFFFFFC);
     tcg_gen_addi_i32(addr, addr, a->disp << 2);
@@ -1856,13 +1912,14 @@ static bool trans_LDDSP(DisasContext *ctx, arg_LDDSP *a){
     return true;
 }
 
-static bool trans_LDINSB(DisasContext *ctx, arg_LDINSB *a){
+static bool trans_LDINSB(DisasContext *ctx, arg_LDINSB *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     TCGv temp = tcg_temp_new_i32();
     TCGv mask = tcg_temp_new_i32();
     int disp = a->disp12;
-    //Sign extend
-    if(disp >> 12){
+    /* Sign extend */
+    if (disp >> 12) {
         disp |= 0xFFFFF000;
     }
     tcg_gen_addi_i32(ptr, cpu_r[a->rp], disp);
@@ -1879,13 +1936,14 @@ static bool trans_LDINSB(DisasContext *ctx, arg_LDINSB *a){
     return true;
 }
 
-static bool trans_LDINSH(DisasContext *ctx, arg_LDINSH *a){
+static bool trans_LDINSH(DisasContext *ctx, arg_LDINSH *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     TCGv temp = tcg_temp_new_i32();
     TCGv mask = tcg_temp_new_i32();
     int disp = a->disp12;
-    //Sign extend
-    if(disp >> 12){
+    /* Sign extend */
+    if (disp >> 12) {
         disp |= 0xFFFFF000;
     }
     disp = disp << 1;
@@ -1903,82 +1961,76 @@ static bool trans_LDINSH(DisasContext *ctx, arg_LDINSH *a){
     return true;
 }
 
-static bool trans_LDM(DisasContext *ctx, arg_LDM *a){
+static bool trans_LDM(DisasContext *ctx, arg_LDM *a)
+{
     int reglist = a->list;
     TCGv loadaddress = tcg_temp_new_i32();
     tcg_gen_mov_i32(loadaddress, cpu_r[a->rp]);
     bool setFlags = false;
 
-    if(((reglist >> 15) &1) == 1){
-        if(a->rp == PC_REG){
+    if (((reglist >> 15) & 1) == 1) {
+        if (a->rp == PC_REG) {
             tcg_gen_mov_i32(loadaddress, cpu_r[SP_REG]);
         }
         tcg_gen_qemu_ld_tl(cpu_r[PC_REG], loadaddress, 0, MO_BEUL);
         tcg_gen_addi_i32(loadaddress, loadaddress, 4);
 
         ctx->base.is_jmp = DISAS_JUMP;
-        if(a->rp == PC_REG){
-            if(((reglist >> 14) & 1) == 0 && ((reglist >> 12) &1) == 0){
+        if (a->rp == PC_REG) {
+            if (((reglist >> 14) & 1) == 0 && ((reglist >> 12) & 1) == 0) {
                 tcg_gen_movi_i32(cpu_r[12], 0);
-            }
-            else if(((reglist >> 14) & 1) == 0 &&
-                    ((reglist >> 12) & 1) == 1){
+            } else if (((reglist >> 14) & 1) == 0 &&
+                       ((reglist >> 12) & 1) == 1) {
                 tcg_gen_movi_i32(cpu_r[12], 1);
-            }
-            else{
+            } else {
                 tcg_gen_movi_i32(cpu_r[12], -1);
             }
             setFlags = true;
-        }
-        else{
-            if(((reglist >> 14) &1) ==1){
+        } else {
+            if (((reglist >> 14) & 1) == 1) {
                 tcg_gen_qemu_ld_tl(cpu_r[LR_REG], loadaddress, 0, MO_BEUL);
                 tcg_gen_addi_i32(loadaddress, loadaddress, 4);
             }
-            if(((reglist >> 13) &1) ==1){
+            if (((reglist >> 13) & 1) == 1) {
                 tcg_gen_qemu_ld_tl(cpu_r[SP_REG], loadaddress, 0, MO_BEUL);
                 tcg_gen_addi_i32(loadaddress, loadaddress, 4);
-
             }
-            if(((reglist >> 12) &1) ==1){
+            if (((reglist >> 12) & 1) == 1) {
                 tcg_gen_qemu_ld_tl(cpu_r[12], loadaddress, 0, MO_BEUL);
                 tcg_gen_addi_i32(loadaddress, loadaddress, 4);
             }
             setFlags = true;
         }
-    }
-    else{
-        if(((reglist >> 14) &1) ==1){
+    } else {
+        if (((reglist >> 14) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[LR_REG], loadaddress, 0, MO_BEUL);
             tcg_gen_addi_i32(loadaddress, loadaddress, 4);
         }
-        if(((reglist >> 13) &1) ==1){
+        if (((reglist >> 13) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[SP_REG], loadaddress, 0, MO_BEUL);
             tcg_gen_addi_i32(loadaddress, loadaddress, 4);
-
         }
-        if(((reglist >> 12) &1)==1){
+        if (((reglist >> 12) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[12], loadaddress, 0, MO_BEUL);
             tcg_gen_addi_i32(loadaddress, loadaddress, 4);
         }
     }
 
-    for(int i = 11; i>= 0; i--){
-        if(((reglist >> i) & 1)  == 1){
+    for (int i = 11; i >= 0; i--) {
+        if (((reglist >> i) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[i], loadaddress, 0, MO_BEUL);
             tcg_gen_addi_i32(loadaddress, loadaddress, 4);
         }
     }
-    if(a->op == 1){
-        if(a->rp == PC_REG){
+    if (a->op == 1) {
+        if (a->rp == PC_REG) {
             tcg_gen_mov_i32(cpu_r[SP_REG], loadaddress);
-        }
-        else{
+        } else {
             tcg_gen_mov_i32(cpu_r[a->rp], loadaddress);
         }
     }
 
-    if(setFlags){
+    if (setFlags) {
         tcg_gen_movi_i32(cpu_sflags[sflagV], 0);
         tcg_gen_movi_i32(cpu_sflags[sflagC], 0);
         TCGv res = tcg_temp_new_i32();
@@ -1987,18 +2039,18 @@ static bool trans_LDM(DisasContext *ctx, arg_LDM *a){
         tcg_gen_shri_i32(cpu_sflags[sflagN], res, 31);
     }
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-//TODO: add tests
-static bool trans_LDMTS(DisasContext *ctx, arg_LDMTS *a){
+/* TODO: add tests */
+static bool trans_LDMTS(DisasContext *ctx, arg_LDMTS *a)
+{
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_mov_i32(addr, cpu_r[a->rp]);
 
-    for(int i = 15; i >= 0; i--){
-        if(((a->list >> i) & 1) == 1){
+    for (int i = 15; i >= 0; i--) {
+        if (((a->list >> i) & 1) == 1) {
             tcg_gen_qemu_ld_tl(i == SP_REG ? cpu_task_sp : cpu_r[i], addr, 0,
                                MO_BEUL);
             tcg_gen_addi_i32(addr, addr, 0x4);
@@ -2007,7 +2059,7 @@ static bool trans_LDMTS(DisasContext *ctx, arg_LDMTS *a){
             }
         }
     }
-    if(a->op){
+    if (a->op) {
         tcg_gen_mov_i32(cpu_r[a->rp], addr);
     }
 
@@ -2015,16 +2067,17 @@ static bool trans_LDMTS(DisasContext *ctx, arg_LDMTS *a){
     return true;
 }
 
-//TODO: add more tests
-static bool trans_LDSWPSH(DisasContext *ctx, arg_LDSWPSH *a){
+/* TODO: add more tests */
+static bool trans_LDSWPSH(DisasContext *ctx, arg_LDSWPSH *a)
+{
     TCGv temp = tcg_temp_new_i32();
     TCGv upper = tcg_temp_new_i32();
     TCGv lower = tcg_temp_new_i32();
     TCGv addr = tcg_temp_new_i32();
 
     int disp = a->disp12;
-    //Sign extend
-    if(disp >> 12){
+    /* Sign extend */
+    if (disp >> 12) {
         disp |= 0xFFFFF000;
     }
     disp = disp << 1;
@@ -2044,15 +2097,16 @@ static bool trans_LDSWPSH(DisasContext *ctx, arg_LDSWPSH *a){
     return true;
 }
 
-static bool trans_LDSWPUH(DisasContext *ctx, arg_LDSWPUH *a){
+static bool trans_LDSWPUH(DisasContext *ctx, arg_LDSWPUH *a)
+{
     TCGv temp = tcg_temp_new_i32();
     TCGv upper = tcg_temp_new_i32();
     TCGv lower = tcg_temp_new_i32();
     TCGv addr = tcg_temp_new_i32();
 
     int disp = a->disp12;
-    //Sign extend
-    if(disp >> 12){
+    /* Sign extend */
+    if (disp >> 12) {
         disp |= 0xFFFFF000;
     }
     disp = disp << 1;
@@ -2072,8 +2126,8 @@ static bool trans_LDSWPUH(DisasContext *ctx, arg_LDSWPUH *a){
     return true;
 }
 
-
-static bool trans_LDSWPW(DisasContext *ctx, arg_LDSWPW *a){
+static bool trans_LDSWPW(DisasContext *ctx, arg_LDSWPW *a)
+{
     TCGv temp = tcg_temp_new_i32();
     TCGv top = tcg_temp_new_i32();
     TCGv high = tcg_temp_new_i32();
@@ -2082,8 +2136,8 @@ static bool trans_LDSWPW(DisasContext *ctx, arg_LDSWPW *a){
     TCGv addr = tcg_temp_new_i32();
 
     int disp = a->disp12;
-    //Sign extend
-    if(disp >> 12){
+    /* Sign extend */
+    if (disp >> 12) {
         disp |= 0xFFFFF000;
     }
     disp = disp << 2;
@@ -2112,26 +2166,26 @@ static bool trans_LDSWPW(DisasContext *ctx, arg_LDSWPW *a){
     return true;
 }
 
-
-static void lslr_set_flags(TCGv shamt, TCGv res, TCGv op, bool isLSR){
-    // Z-Flag
+static void lslr_set_flags(TCGv shamt, TCGv res, TCGv op, bool isLSR)
+{
+    /* Z-Flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
 
-    /// N-Flag
+    /* / N-Flag */
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    // C-Flag
+    /* C-Flag */
     TCGLabel *setZero = gen_new_label();
     TCGLabel *end = gen_new_label();
     TCGv temp = tcg_temp_new_i32();
 
     tcg_gen_brcondi_i32(TCG_COND_EQ, shamt, 0, setZero);
     tcg_gen_movi_i32(temp, 32);
-    if(isLSR){
+    if (isLSR) {
         tcg_gen_subi_i32(temp, shamt, 1);
 
-    }else{
+    } else {
         tcg_gen_sub_i32(temp, temp, shamt);
     }
     tcg_gen_shr_i32(temp, op, temp);
@@ -2142,10 +2196,10 @@ static void lslr_set_flags(TCGv shamt, TCGv res, TCGv op, bool isLSR){
     tcg_gen_movi_i32(cpu_sflags[sflagC], 0);
 
     gen_set_label(end);
-
 }
 
-static bool trans_LSL_f1(DisasContext *ctx, arg_LSL_f1 *a){
+static bool trans_LSL_f1(DisasContext *ctx, arg_LSL_f1 *a)
+{
     TCGv rx = tcg_temp_new_i32();
     tcg_gen_mov_i32(rx, cpu_r[a->rx]);
     TCGv Ry = tcg_temp_new_i32();
@@ -2161,7 +2215,8 @@ static bool trans_LSL_f1(DisasContext *ctx, arg_LSL_f1 *a){
     return true;
 }
 
-static bool trans_LSL_f2(DisasContext *ctx, arg_LSL_f2 *a){
+static bool trans_LSL_f2(DisasContext *ctx, arg_LSL_f2 *a)
+{
     int amount = a->bp4 << 1;
     amount |= a->bp1;
 
@@ -2180,7 +2235,8 @@ static bool trans_LSL_f2(DisasContext *ctx, arg_LSL_f2 *a){
     return true;
 }
 
-static bool trans_LSL_f3(DisasContext *ctx, arg_LSL_f3 *a){
+static bool trans_LSL_f3(DisasContext *ctx, arg_LSL_f3 *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv Rs = tcg_temp_new_i32();
     TCGv sa = tcg_temp_new_i32();
@@ -2196,7 +2252,8 @@ static bool trans_LSL_f3(DisasContext *ctx, arg_LSL_f3 *a){
     return true;
 }
 
-static bool trans_LSR_f1(DisasContext *ctx, arg_LSR_f1 *a){
+static bool trans_LSR_f1(DisasContext *ctx, arg_LSR_f1 *a)
+{
     TCGv rx = tcg_temp_new_i32();
     tcg_gen_mov_i32(rx, cpu_r[a->rx]);
     TCGv Ry = tcg_temp_new_i32();
@@ -2214,7 +2271,8 @@ static bool trans_LSR_f1(DisasContext *ctx, arg_LSR_f1 *a){
     return true;
 }
 
-static bool trans_LSR_f2(DisasContext *ctx, arg_LSR_f2 *a){
+static bool trans_LSR_f2(DisasContext *ctx, arg_LSR_f2 *a)
+{
     int amount = a->bp4 << 1;
     amount |= a->bp1;
 
@@ -2233,7 +2291,8 @@ static bool trans_LSR_f2(DisasContext *ctx, arg_LSR_f2 *a){
     return true;
 }
 
-static bool trans_LSR_f3(DisasContext *ctx, arg_LSR_f3 *a){
+static bool trans_LSR_f3(DisasContext *ctx, arg_LSR_f3 *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv Rs = tcg_temp_new_i32();
     TCGv sa = tcg_temp_new_i32();
@@ -2249,17 +2308,18 @@ static bool trans_LSR_f3(DisasContext *ctx, arg_LSR_f3 *a){
     return true;
 }
 
-
-static bool trans_MAC(DisasContext *ctx, arg_MAC *a){
+static bool trans_MAC(DisasContext *ctx, arg_MAC *a)
+{
     TCGv temp = tcg_temp_new_i32();
-    tcg_gen_mul_i32(temp, cpu_r[a->rx],cpu_r[a->ry]);
+    tcg_gen_mul_i32(temp, cpu_r[a->rx], cpu_r[a->ry]);
     tcg_gen_add_i32(cpu_r[a->rd], temp, cpu_r[a->rd]);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MACHHD(DisasContext *ctx, arg_MACHHD *a){
+static bool trans_MACHHD(DisasContext *ctx, arg_MACHHD *a)
+{
     TCGv_i64 operand1 = tcg_temp_new_i64();
     TCGv_i64 operand2 = tcg_temp_new_i64();
     TCGv_i64 rdp = tcg_temp_new_i64();
@@ -2268,24 +2328,22 @@ static bool trans_MACHHD(DisasContext *ctx, arg_MACHHD *a){
     TCGv_i64 ry = tcg_temp_new_i64();
     TCGv_i64 res = tcg_temp_new_i64();
     TCGv_i64 dwr = tcg_temp_new_i64();
-    tcg_gen_extu_i32_i64(rdp, cpu_r[a->rd+1]);
+    tcg_gen_extu_i32_i64(rdp, cpu_r[a->rd + 1]);
     tcg_gen_extu_i32_i64(rd, cpu_r[a->rd]);
     tcg_gen_extu_i32_i64(rx, cpu_r[a->rx]);
     tcg_gen_extu_i32_i64(ry, cpu_r[a->ry]);
 
-    if(a->x == 1){
+    if (a->x == 1) {
         tcg_gen_shri_i64(operand1, rx, 16);
         tcg_gen_ext16s_i64(operand1, operand1);
-    }
-    else{
+    } else {
         tcg_gen_andi_i64(operand1, rx, 0x0000FFFF);
         tcg_gen_ext16s_i64(operand1, operand1);
     }
-    if(a->y == 1){
+    if (a->y == 1) {
         tcg_gen_shri_i64(operand2, ry, 16);
         tcg_gen_ext16s_i64(operand2, operand2);
-    }
-    else{
+    } else {
         tcg_gen_andi_i64(operand2, ry, 0x0000FFFF);
         tcg_gen_ext16s_i64(operand2, operand2);
     }
@@ -2298,30 +2356,29 @@ static bool trans_MACHHD(DisasContext *ctx, arg_MACHHD *a){
     tcg_gen_shri_i64(dwr, dwr, 16);
     tcg_gen_add_i64(dwr, dwr, res);
     tcg_gen_shli_i64(dwr, dwr, 16);
-    tcg_gen_extr_i64_i32(cpu_r[a->rd], cpu_r[a->rd+1], dwr);
+    tcg_gen_extr_i64_i32(cpu_r[a->rd], cpu_r[a->rd + 1], dwr);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MACHHW(DisasContext *ctx, arg_MACHHW *a){
+static bool trans_MACHHW(DisasContext *ctx, arg_MACHHW *a)
+{
     TCGv operand1 = tcg_temp_new_i32();
     TCGv operand2 = tcg_temp_new_i32();
     TCGv rd = tcg_temp_new_i32();
 
-    if(a->x == 1){
+    if (a->x == 1) {
         tcg_gen_shri_i32(operand1, cpu_r[a->rx], 16);
         tcg_gen_ext16s_i32(operand1, operand1);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(operand1, cpu_r[a->rx], 0x0000FFFF);
         tcg_gen_ext16s_i32(operand1, operand1);
     }
-    if(a->y == 1){
+    if (a->y == 1) {
         tcg_gen_shri_i32(operand2, cpu_r[a->ry], 16);
         tcg_gen_ext16s_i32(operand2, operand2);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(operand2, cpu_r[a->ry], 0x0000FFFF);
         tcg_gen_ext16s_i32(operand2, operand2);
     }
@@ -2334,7 +2391,8 @@ static bool trans_MACHHW(DisasContext *ctx, arg_MACHHW *a){
     return true;
 }
 
-static bool trans_MACSD(DisasContext *ctx, arg_MACSD*a){
+static bool trans_MACSD(DisasContext *ctx, arg_MACSD *a)
+{
     TCGv_i64 rdp = tcg_temp_new_i64();
     TCGv_i64 rd = tcg_temp_new_i64();
     TCGv_i64 acc = tcg_temp_new_i64();
@@ -2342,7 +2400,7 @@ static bool trans_MACSD(DisasContext *ctx, arg_MACSD*a){
     TCGv_i64 res = tcg_temp_new_i64();
     TCGv_i64 rx = tcg_temp_new_i64();
     TCGv_i64 ry = tcg_temp_new_i64();
-    tcg_gen_ext_i32_i64(rdp, cpu_r[a->rd+1]);
+    tcg_gen_ext_i32_i64(rdp, cpu_r[a->rd + 1]);
     tcg_gen_ext_i32_i64(rd, cpu_r[a->rd]);
     tcg_gen_ext_i32_i64(rx, cpu_r[a->rx]);
     tcg_gen_ext_i32_i64(ry, cpu_r[a->ry]);
@@ -2352,30 +2410,32 @@ static bool trans_MACSD(DisasContext *ctx, arg_MACSD*a){
     tcg_gen_mul_i64(prod64, rx, ry);
 
     tcg_gen_add_i64(res, prod64, acc);
-    tcg_gen_extr_i64_i32(cpu_r[a->rd], cpu_r[a->rd+1], res);
+    tcg_gen_extr_i64_i32(cpu_r[a->rd], cpu_r[a->rd + 1], res);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MACSATHHW(DisasContext *ctx, arg_MACSATHHW *a) {
+static bool trans_MACSATHHW(DisasContext *ctx, arg_MACSATHHW *a)
+{
     TCGv operand1 = tcg_temp_new_i32();
     TCGv operand2 = tcg_temp_new_i32();
 
-    //TODO: Move segment to helper function. Also in other translation functions.
-    if(a->x == 1){
+    /*
+     * TODO: Move segment to helper function. Also in other translation
+     * functions.
+     */
+    if (a->x == 1) {
         tcg_gen_shri_i32(operand1, cpu_r[a->rx], 16);
         tcg_gen_ext16s_i32(operand1, operand1);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(operand1, cpu_r[a->rx], 0x0000FFFF);
         tcg_gen_ext16s_i32(operand1, operand1);
     }
-    if(a->y == 1){
+    if (a->y == 1) {
         tcg_gen_shri_i32(operand2, cpu_r[a->ry], 16);
         tcg_gen_ext16s_i32(operand2, operand2);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(operand2, cpu_r[a->ry], 0x0000FFFF);
         tcg_gen_ext16s_i32(operand2, operand2);
     }
@@ -2386,7 +2446,8 @@ static bool trans_MACSATHHW(DisasContext *ctx, arg_MACSATHHW *a) {
     return true;
 }
 
-static bool trans_MACUD(DisasContext *ctx, arg_MACUD *a){
+static bool trans_MACUD(DisasContext *ctx, arg_MACUD *a)
+{
     TCGv_i64 rdp = tcg_temp_new_i64();
     TCGv_i64 rd = tcg_temp_new_i64();
     TCGv_i64 acc = tcg_temp_new_i64();
@@ -2394,7 +2455,7 @@ static bool trans_MACUD(DisasContext *ctx, arg_MACUD *a){
     TCGv_i64 res = tcg_temp_new_i64();
     TCGv_i64 rx = tcg_temp_new_i64();
     TCGv_i64 ry = tcg_temp_new_i64();
-    tcg_gen_extu_i32_i64(rdp, cpu_r[a->rd+1]);
+    tcg_gen_extu_i32_i64(rdp, cpu_r[a->rd + 1]);
     tcg_gen_extu_i32_i64(rd, cpu_r[a->rd]);
     tcg_gen_extu_i32_i64(rx, cpu_r[a->rx]);
     tcg_gen_extu_i32_i64(ry, cpu_r[a->ry]);
@@ -2404,15 +2465,16 @@ static bool trans_MACUD(DisasContext *ctx, arg_MACUD *a){
     tcg_gen_mul_i64(prod64, rx, ry);
 
     tcg_gen_add_i64(res, prod64, acc);
-    tcg_gen_extr_i64_i32(cpu_r[a->rd], cpu_r[a->rd+1], res);
+    tcg_gen_extr_i64_i32(cpu_r[a->rd], cpu_r[a->rd + 1], res);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-//TODO: implement MACWH.D insn
+/* TODO: implement MACWH.D insn */
 
-static bool trans_MAX(DisasContext *ctx, arg_MAX *a){
+static bool trans_MAX(DisasContext *ctx, arg_MAX *a)
+{
     TCGLabel *if_1 = gen_new_label();
     TCGLabel *else_1 = gen_new_label();
     TCGLabel *exit = gen_new_label();
@@ -2433,7 +2495,8 @@ static bool trans_MAX(DisasContext *ctx, arg_MAX *a){
     return true;
 }
 
-static bool trans_MCALL(DisasContext *ctx, arg_MCALL *a){
+static bool trans_MCALL(DisasContext *ctx, arg_MCALL *a)
+{
     tcg_gen_addi_i32(cpu_r[LR_REG], cpu_r[PC_REG], 0x4);
     TCGv PC = cpu_r[PC_REG];
 
@@ -2443,7 +2506,7 @@ static bool trans_MCALL(DisasContext *ctx, arg_MCALL *a){
 
     TCGv disp = tcg_temp_new_i32();
     int dispI = a->disp;
-    if(dispI >> 15 == 1){
+    if (dispI >> 15 == 1) {
         dispI |= 0xFFFF0000;
     }
 
@@ -2453,13 +2516,12 @@ static bool trans_MCALL(DisasContext *ctx, arg_MCALL *a){
     tcg_gen_add_i32(Rp, Rp, disp);
     tcg_gen_qemu_ld_tl(PC, Rp, 0x0, MO_BEUL);
 
-
     ctx->base.is_jmp = DISAS_JUMP;
     ctx->base.pc_next += 4;
     return true;
 }
 
-//TODO: add tests
+/* TODO: add tests */
 static bool trans_MEMC(DisasContext *ctx, arg_MEMC *a)
 {
     TCGv addr = tcg_temp_new_i32();
@@ -2482,30 +2544,29 @@ static bool trans_MEMC(DisasContext *ctx, arg_MEMC *a)
 
 static bool trans_MEMS_bp5_imm15(DisasContext *ctx, arg_MEMS_bp5_imm15 *a)
 {
-    //TODO: implement
+    /* TODO: implement */
     return false;
 }
 
 static bool trans_MEMT_bp5_imm15(DisasContext *ctx, arg_MEMT_bp5_imm15 *a)
 {
-    //TODO: implement
+    /* TODO: implement */
     return false;
 }
 
-static bool trans_MFSR(DisasContext *ctx, arg_MFSR *a){
+static bool trans_MFSR(DisasContext *ctx, arg_MFSR *a)
+{
     TCGv sr = tcg_temp_new_i32();
-    if((a->sr)== 0){
+    if ((a->sr) == 0) {
         tcg_gen_movi_i32(sr, 0);
 
-        for(int i= 31; i>= 0; i--){
+        for (int i = 31; i >= 0; i--) {
             tcg_gen_shli_i32(sr, sr, 1);
             tcg_gen_add_i32(sr, sr, cpu_sflags[i]);
         }
-    }
-    else if (a->sr == SYSREG_COUNT_WORD) {
+    } else if (a->sr == SYSREG_COUNT_WORD) {
         gen_helper_avr32_count(sr);
-    }
-    else{
+    } else {
         tcg_gen_mov_i32(sr, cpu_sysr[a->sr]);
     }
     tcg_gen_mov_i32(cpu_r[a->rd], sr);
@@ -2518,8 +2579,8 @@ static bool trans_MFDR(DisasContext *ctx, arg_MFDR *a)
 {
     /*
      * The current AVR32 model does not emulate on-chip debug hardware.
-     * Linux only records these values during boot, so returning zero is
-     * enough to continue until a real OCD model exists.
+     * Linux only records these values during boot, so returning zero is *enough
+     * to continue until a real OCD model exists.
      */
     tcg_gen_movi_i32(cpu_r[a->rd], 0);
 
@@ -2531,7 +2592,8 @@ static bool trans_MFDR(DisasContext *ctx, arg_MFDR *a)
     return true;
 }
 
-static bool trans_MIN(DisasContext *ctx, arg_MIN *a){
+static bool trans_MIN(DisasContext *ctx, arg_MIN *a)
+{
     TCGLabel *if_1 = gen_new_label();
     TCGLabel *else_1 = gen_new_label();
     TCGLabel *exit = gen_new_label();
@@ -2552,15 +2614,16 @@ static bool trans_MIN(DisasContext *ctx, arg_MIN *a){
     return true;
 }
 
-static bool trans_MOV_f1(DisasContext *ctx, arg_MOV_f1 *a){
+static bool trans_MOV_f1(DisasContext *ctx, arg_MOV_f1 *a)
+{
     int mmI = a->imm8;
-    if(mmI >> 7){
+    if (mmI >> 7) {
         mmI |= 0xFFFFFF00;
     }
 
     tcg_gen_movi_tl(cpu_r[a->rd], mmI);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -2568,18 +2631,19 @@ static bool trans_MOV_f1(DisasContext *ctx, arg_MOV_f1 *a){
     return true;
 }
 
-static bool trans_MOV_f2(DisasContext *ctx, arg_MOV_f2 *a){
-    int mmI = ( a->immu) <<17;
+static bool trans_MOV_f2(DisasContext *ctx, arg_MOV_f2 *a)
+{
+    int mmI = (a->immu) << 17;
     mmI |= (a->immm) << 16;
     mmI |= (a->imml);
 
-    //Sign extend
-    if(mmI >> 20){
+    /* Sign extend */
+    if (mmI >> 20) {
         mmI |= 0xFFE00000;
     }
     tcg_gen_movi_i32(cpu_r[a->rd], mmI);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -2587,17 +2651,19 @@ static bool trans_MOV_f2(DisasContext *ctx, arg_MOV_f2 *a){
     return true;
 }
 
-static bool trans_MOV_f3(DisasContext *ctx, arg_MOV_f3 *a){
+static bool trans_MOV_f3(DisasContext *ctx, arg_MOV_f3 *a)
+{
     tcg_gen_mov_tl(cpu_r[a->rd], cpu_r[a->rs]);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_MOVc_f1(DisasContext *ctx, arg_MOVc_f1 *a){
+static bool trans_MOVc_f1(DisasContext *ctx, arg_MOVc_f1 *a)
+{
     TCGLabel *no_move = gen_new_label();
     TCGv reg = tcg_temp_new_i32();
     int val = checkCondition(a->cond4, reg, cpu_r, cpu_sflags);
@@ -2606,16 +2672,16 @@ static bool trans_MOVc_f1(DisasContext *ctx, arg_MOVc_f1 *a){
     tcg_gen_mov_i32(cpu_r[a->rd], cpu_r[a->rs]);
 
     gen_set_label(no_move);
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MOVc_f2(DisasContext *ctx, arg_MOVc_f2 *a){
+static bool trans_MOVc_f2(DisasContext *ctx, arg_MOVc_f2 *a)
+{
     int imm = sign_extend_8(a->imm8);
-
 
     TCGLabel *no_move = gen_new_label();
     TCGv reg = tcg_temp_new_i32();
@@ -2626,18 +2692,19 @@ static bool trans_MOVc_f2(DisasContext *ctx, arg_MOVc_f2 *a){
 
     gen_set_label(no_move);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MOVH(DisasContext *ctx, arg_MOVH *a){
+static bool trans_MOVH(DisasContext *ctx, arg_MOVH *a)
+{
     tcg_gen_movi_tl(cpu_r[a->rd], a->imm16);
     tcg_gen_shli_i32(cpu_r[a->rd], cpu_r[a->rd], 0x10);
 
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
     ctx->base.pc_next += 4;
@@ -2650,68 +2717,70 @@ static bool trans_MTDR(DisasContext *ctx, arg_MTDR *a)
     return true;
 }
 
-static bool trans_MTSR (DisasContext *ctx, arg_MTSR  *a){
+static bool trans_MTSR(DisasContext *ctx, arg_MTSR *a)
+{
     TCGv s_reg = cpu_sysr[a->sr];
     TCGv rs = cpu_r[a->rs];
 
-    if (a->sr == 0){
+    if (a->sr == 0) {
         TCGv temp = tcg_temp_new_i32();
         tcg_gen_mov_i32(temp, rs);
-        for (int i= 0; i< 32; i++){
+        for (int i = 0; i < 32; i++) {
             tcg_gen_mov_i32(cpu_sflags[i], temp);
             tcg_gen_andi_i32(cpu_sflags[i], cpu_sflags[i], 0x1);
             tcg_gen_shri_i32(temp, temp, 1);
         }
-    }
-    else{
+    } else {
         tcg_gen_mov_i32(s_reg, rs);
     }
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MUL_f1(DisasContext *ctx, arg_MUL_f1 *a){
+static bool trans_MUL_f1(DisasContext *ctx, arg_MUL_f1 *a)
+{
     tcg_gen_mul_i32(cpu_r[a->rd], cpu_r[a->rd], cpu_r[a->rs]);
 
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_MUL_f2(DisasContext *ctx, arg_MUL_f2 *a){
+static bool trans_MUL_f2(DisasContext *ctx, arg_MUL_f2 *a)
+{
     tcg_gen_mul_i32(cpu_r[a->rd], cpu_r[a->rx], cpu_r[a->ry]);
-    ctx->base.pc_next +=4;
+    ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MUL_f3(DisasContext *ctx, arg_MUL_f3 *a){
+static bool trans_MUL_f3(DisasContext *ctx, arg_MUL_f3 *a)
+{
     int imm = sign_extend_8(a->imm8);
     tcg_gen_muli_i32(cpu_r[a->rd], cpu_r[a->rs], imm);
-    ctx->base.pc_next +=4;
+    ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MULHHW(DisasContext *ctx, arg_MULHHW *a){
+static bool trans_MULHHW(DisasContext *ctx, arg_MULHHW *a)
+{
     TCGv op1 = tcg_temp_new_i32();
     TCGv op2 = tcg_temp_new_i32();
-    if(a->x == 1){
+    if (a->x == 1) {
         tcg_gen_shri_i32(op1, cpu_r[a->rx], 0x10);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(op1, cpu_r[a->rx], 0x0000FFFF);
     }
     tcg_gen_ext16s_i32(op1, op1);
 
-    if(a->y == 1){
+    if (a->y == 1) {
         tcg_gen_shri_i32(op2, cpu_r[a->ry], 0x10);
-    }
-    else{
+    } else {
         tcg_gen_andi_i32(op2, cpu_r[a->ry], 0x0000FFFF);
     }
     tcg_gen_ext16s_i32(op2, op2);
 
     tcg_gen_mul_i32(cpu_r[a->rd], op1, op2);
 
-    ctx->base.pc_next +=4;
+    ctx->base.pc_next += 4;
     return true;
 }
 
@@ -2726,17 +2795,19 @@ static bool trans_MULSD(DisasContext *ctx, arg_MULSD *a)
     return true;
 }
 
-static bool trans_MULUD(DisasContext *ctx, arg_MULUD *a){
+static bool trans_MULUD(DisasContext *ctx, arg_MULUD *a)
+{
     TCGv Rd = cpu_r[a->rd];
-    TCGv Rdp = cpu_r[a->rd+1];
+    TCGv Rdp = cpu_r[a->rd + 1];
 
     tcg_gen_mulu2_i32(Rd, Rdp, cpu_r[a->rx], cpu_r[a->ry]);
 
-    ctx->base.pc_next +=4;
+    ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_MUSFR(DisasContext *ctx, arg_MUSFR *a){
+static bool trans_MUSFR(DisasContext *ctx, arg_MUSFR *a)
+{
     tcg_gen_mov_i32(cpu_sflags[sflagC], cpu_r[a->rs]);
     tcg_gen_andi_i32(cpu_sflags[sflagC], cpu_sflags[sflagC], 0x1);
 
@@ -2752,11 +2823,12 @@ static bool trans_MUSFR(DisasContext *ctx, arg_MUSFR *a){
     tcg_gen_shri_i32(cpu_sflags[sflagV], cpu_sflags[sflagV], 0x3);
     tcg_gen_andi_i32(cpu_sflags[sflagV], cpu_sflags[sflagV], 0x1);
 
-    ctx->base.pc_next +=2;
+    ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_MUSTR(DisasContext *ctx, arg_MUSTR *a){
+static bool trans_MUSTR(DisasContext *ctx, arg_MUSTR *a)
+{
     TCGv temp = tcg_temp_new_i32();
 
     tcg_gen_mov_i32(temp, cpu_sflags[sflagV]);
@@ -2765,20 +2837,21 @@ static bool trans_MUSTR(DisasContext *ctx, arg_MUSTR *a){
 
     tcg_gen_mov_i32(temp, cpu_sflags[sflagN]);
     tcg_gen_shli_i32(temp, temp, 2);
-    tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd],temp);
+    tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd], temp);
 
     tcg_gen_mov_i32(temp, cpu_sflags[sflagZ]);
     tcg_gen_shli_i32(temp, temp, 1);
-    tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd],temp);
+    tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd], temp);
 
     tcg_gen_mov_i32(temp, cpu_sflags[sflagC]);
-    tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd],temp);
+    tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd], temp);
 
-    ctx->base.pc_next +=2;
+    ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_NEG(DisasContext *ctx, arg_NEG *a){
+static bool trans_NEG(DisasContext *ctx, arg_NEG *a)
+{
     TCGv zero = tcg_temp_new_i32();
     TCGv rd = tcg_temp_new_i32();
     TCGv res = tcg_temp_new_i32();
@@ -2799,14 +2872,15 @@ static bool trans_NEG(DisasContext *ctx, arg_NEG *a){
     ctx->base.pc_next += 2;
     return true;
 }
-static bool trans_NOP(DisasContext *ctx, arg_NOP *a){
+static bool trans_NOP(DisasContext *ctx, arg_NOP *a)
+{
 
     ctx->base.pc_next += 2;
     return true;
 }
 
-
-static bool trans_OR_f1(DisasContext *ctx, arg_OR_f1 *a){
+static bool trans_OR_f1(DisasContext *ctx, arg_OR_f1 *a)
+{
     tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd], cpu_r[a->rs]);
     TCGv res = tcg_temp_new_i32();
     tcg_gen_mov_i32(res, cpu_r[a->rd]);
@@ -2817,7 +2891,8 @@ static bool trans_OR_f1(DisasContext *ctx, arg_OR_f1 *a){
     return true;
 }
 
-static bool trans_OR_f2(DisasContext *ctx, arg_OR_f2 *a){
+static bool trans_OR_f2(DisasContext *ctx, arg_OR_f2 *a)
+{
     TCGv ry = tcg_temp_new_i32();
     tcg_gen_mov_i32(ry, cpu_r[a->ry]);
     tcg_gen_shli_i32(ry, ry, a->sa5);
@@ -2832,7 +2907,8 @@ static bool trans_OR_f2(DisasContext *ctx, arg_OR_f2 *a){
     return true;
 }
 
-static bool trans_OR_f3(DisasContext *ctx, arg_OR_f2 *a){
+static bool trans_OR_f3(DisasContext *ctx, arg_OR_f2 *a)
+{
     TCGv ry = tcg_temp_new_i32();
     tcg_gen_mov_i32(ry, cpu_r[a->ry]);
     tcg_gen_shri_i32(ry, ry, a->sa5);
@@ -2847,7 +2923,8 @@ static bool trans_OR_f3(DisasContext *ctx, arg_OR_f2 *a){
     return true;
 }
 
-static bool trans_OR_cond(DisasContext *ctx, arg_OR_cond *a){
+static bool trans_OR_cond(DisasContext *ctx, arg_OR_cond *a)
+{
     TCGLabel *no_op = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -2862,7 +2939,8 @@ static bool trans_OR_cond(DisasContext *ctx, arg_OR_cond *a){
     return true;
 }
 
-static bool trans_ORH(DisasContext *ctx, arg_ORH *a){
+static bool trans_ORH(DisasContext *ctx, arg_ORH *a)
+{
     TCGv imm = tcg_temp_new_i32();
     tcg_gen_movi_i32(imm, a->imm16);
     tcg_gen_shli_i32(imm, imm, 16);
@@ -2871,12 +2949,12 @@ static bool trans_ORH(DisasContext *ctx, arg_ORH *a){
     tcg_gen_shri_i32(cpu_sflags[sflagN], cpu_r[a->rd], 31);
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], cpu_r[a->rd], 0);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_ORL(DisasContext *ctx, arg_ORH *a){
+static bool trans_ORL(DisasContext *ctx, arg_ORH *a)
+{
     TCGv imm = tcg_temp_new_i32();
     tcg_gen_movi_i32(imm, a->imm16);
     tcg_gen_or_i32(cpu_r[a->rd], cpu_r[a->rd], imm);
@@ -2888,64 +2966,59 @@ static bool trans_ORL(DisasContext *ctx, arg_ORH *a){
     return true;
 }
 
-static bool trans_POPM(DisasContext *ctx, arg_POPM *a){
+static bool trans_POPM(DisasContext *ctx, arg_POPM *a)
+{
     bool setFlags = false;
 
-    if (((a->list >> 8) & 1) == 1 && (((a->list >> 0) & 1) == 1)){
+    if (((a->list >> 8) & 1) == 1 && (((a->list >> 0) & 1) == 1)) {
         tcg_gen_qemu_ld_tl(cpu_r[PC_REG], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
         ctx->base.is_jmp = DISAS_JUMP;
 
-        if (((a->list >> 6) & 1) == 0 && ((a->list >> 7) & 1) == 0){
+        if (((a->list >> 6) & 1) == 0 && ((a->list >> 7) & 1) == 0) {
             tcg_gen_movi_i32(cpu_r[12], 0);
-        }
-        else if (((a->list >> 6) & 1) == 1 && ((a->list >> 7) & 1) == 0){
+        } else if (((a->list >> 6) & 1) == 1 && ((a->list >> 7) & 1) == 0) {
             tcg_gen_movi_i32(cpu_r[12], 1);
-        }
-        else{
+        } else {
             tcg_gen_movi_i32(cpu_r[12], -1);
         }
         setFlags = true;
-    }
-    else{
-        if(((a->list >> 8) & 1) == 1){
+    } else {
+        if (((a->list >> 8) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[PC_REG], cpu_r[SP_REG], 0, MO_BEUL);
             tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
             ctx->base.is_jmp = DISAS_JUMP;
         }
-        if(((a->list >> 7) & 1) == 1){
+        if (((a->list >> 7) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[LR_REG], cpu_r[SP_REG], 0, MO_BEUL);
             tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
-
         }
-        if(((a->list >> 6) & 1) == 1){
+        if (((a->list >> 6) & 1) == 1) {
             tcg_gen_qemu_ld_tl(cpu_r[12], cpu_r[SP_REG], 0, MO_BEUL);
             tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
-
         }
-        if(((a->list >> 8) & 1) == 1){
+        if (((a->list >> 8) & 1) == 1) {
             setFlags = true;
         }
     }
 
-    if(((a->list >> 5) & 1) == 1){
+    if (((a->list >> 5) & 1) == 1) {
         tcg_gen_qemu_ld_tl(cpu_r[11], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
-
     }
-    if(((a->list >> 4) & 1) == 1){
+    if (((a->list >> 4) & 1) == 1) {
         tcg_gen_qemu_ld_tl(cpu_r[10], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
     }
 
-    if(((a->list >> 3) & 1) == 1){
+    if (((a->list >> 3) & 1) == 1) {
         tcg_gen_qemu_ld_tl(cpu_r[9], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
         tcg_gen_qemu_ld_tl(cpu_r[8], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
     }
 
-    if(((a->list >> 2) & 1) == 1){
+    if (((a->list >> 2) & 1) == 1) {
         tcg_gen_qemu_ld_tl(cpu_r[7], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
         tcg_gen_qemu_ld_tl(cpu_r[6], cpu_r[SP_REG], 0, MO_BEUL);
@@ -2955,7 +3028,7 @@ static bool trans_POPM(DisasContext *ctx, arg_POPM *a){
         tcg_gen_qemu_ld_tl(cpu_r[4], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
     }
-    if(((a->list >> 1) & 1) == 1){
+    if (((a->list >> 1) & 1) == 1) {
         tcg_gen_qemu_ld_tl(cpu_r[3], cpu_r[SP_REG], 0, MO_BEUL);
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
         tcg_gen_qemu_ld_tl(cpu_r[2], cpu_r[SP_REG], 0, MO_BEUL);
@@ -2966,7 +3039,7 @@ static bool trans_POPM(DisasContext *ctx, arg_POPM *a){
         tcg_gen_addi_i32(cpu_r[SP_REG], cpu_r[SP_REG], 0x4);
     }
 
-    if(setFlags){
+    if (setFlags) {
         tcg_gen_movi_i32(cpu_sflags[sflagV], 0);
         tcg_gen_movi_i32(cpu_sflags[sflagC], 0);
         TCGv res = tcg_temp_new_i32();
@@ -2979,9 +3052,10 @@ static bool trans_POPM(DisasContext *ctx, arg_POPM *a){
     return true;
 }
 
-static bool trans_PUSHM(DisasContext *ctx, arg_PUSHM *a){
+static bool trans_PUSHM(DisasContext *ctx, arg_PUSHM *a)
+{
     TCGv sp = cpu_r[SP_REG];
-    if (((a->list >> 0) & 1) == 1){
+    if (((a->list >> 0) & 1) == 1) {
         tcg_gen_subi_i32(sp, sp, 0x4);
         tcg_gen_qemu_st_tl(cpu_r[0], sp, 0x0, MO_BEUL);
         tcg_gen_subi_i32(sp, sp, 0x4);
@@ -2991,7 +3065,7 @@ static bool trans_PUSHM(DisasContext *ctx, arg_PUSHM *a){
         tcg_gen_subi_i32(sp, sp, 0x4);
         tcg_gen_qemu_st_tl(cpu_r[3], sp, 0x0, MO_BEUL);
     }
-    if (((a->list >> 1) & 1) == 1){
+    if (((a->list >> 1) & 1) == 1) {
         tcg_gen_subi_i32(sp, sp, 0x4);
         tcg_gen_qemu_st_tl(cpu_r[4], sp, 0x0, MO_BEUL);
         tcg_gen_subi_i32(sp, sp, 0x4);
@@ -3032,10 +3106,11 @@ static bool trans_PUSHM(DisasContext *ctx, arg_PUSHM *a){
     return true;
 }
 
-static bool trans_RCALL_f1(DisasContext *ctx, arg_RCALL_f1 *a){
+static bool trans_RCALL_f1(DisasContext *ctx, arg_RCALL_f1 *a)
+{
     uint32_t disp = a->disp2 << 8;
     disp |= a->disp8;
-    if(disp >> 9 == 1){
+    if (disp >> 9 == 1) {
         disp |= 0xFFFFFC00;
     }
     disp = disp << 1;
@@ -3048,11 +3123,12 @@ static bool trans_RCALL_f1(DisasContext *ctx, arg_RCALL_f1 *a){
     return true;
 }
 
-static bool trans_RCALL_f2(DisasContext *ctx, arg_RCALL_f2 *a){
+static bool trans_RCALL_f2(DisasContext *ctx, arg_RCALL_f2 *a)
+{
     uint32_t disp = a->immu << 17;
     disp |= a->immm << 16;
     disp |= a->imml;
-    if(disp >> 20 == 1){
+    if (disp >> 20 == 1) {
         disp |= 0xFFE00000;
     }
     disp = disp << 1;
@@ -3064,7 +3140,8 @@ static bool trans_RCALL_f2(DisasContext *ctx, arg_RCALL_f2 *a){
     return true;
 }
 
-static bool trans_RET(DisasContext *ctx, arg_RET *a){
+static bool trans_RET(DisasContext *ctx, arg_RET *a)
+{
     TCGLabel *no_return = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -3073,16 +3150,13 @@ static bool trans_RET(DisasContext *ctx, arg_RET *a){
     tcg_gen_brcondi_i32(TCG_COND_NE, reg, val, no_return);
 
     TCGLabel *leave = gen_new_label();
-    if(a->rd != LR_REG && a->rd != SP_REG && a->rd != PC_REG){
+    if (a->rd != LR_REG && a->rd != SP_REG && a->rd != PC_REG) {
         tcg_gen_mov_i32(cpu_r[12], cpu_r[a->rd]);
-    }
-    else if(a->rd == LR_REG){
+    } else if (a->rd == LR_REG) {
         tcg_gen_movi_i32(cpu_r[12], -1);
-    }
-    else if(a->rd == SP_REG){
+    } else if (a->rd == SP_REG) {
         tcg_gen_movi_i32(cpu_r[12], 0);
-    }
-    else{
+    } else {
         tcg_gen_movi_i32(cpu_r[12], 1);
     }
 
@@ -3106,7 +3180,8 @@ static bool trans_RET(DisasContext *ctx, arg_RET *a){
     return true;
 }
 
-static bool trans_RETE(DisasContext *ctx, arg_RETE *a){
+static bool trans_RETE(DisasContext *ctx, arg_RETE *a)
+{
     gen_helper_avr32_rete(tcg_env);
 
     ctx->base.is_jmp = DISAS_JUMP;
@@ -3114,7 +3189,8 @@ static bool trans_RETE(DisasContext *ctx, arg_RETE *a){
     return true;
 }
 
-static bool trans_RETS(DisasContext *ctx, arg_RETS *a){
+static bool trans_RETS(DisasContext *ctx, arg_RETS *a)
+{
     TCGLabel *if_1 = gen_new_label();
     TCGLabel *if_1_else_if = gen_new_label();
     TCGLabel *if_1_else = gen_new_label();
@@ -3122,25 +3198,25 @@ static bool trans_RETS(DisasContext *ctx, arg_RETS *a){
 
     TCGv sr_m = tcg_temp_new_i32();
 
-    // set sr_m to SR[M2:M0]
+    /* set sr_m to SR[M2:M0] */
     tcg_gen_mov_i32(sr_m, cpu_sflags[24]);
     tcg_gen_shli_i32(sr_m, sr_m, 1);
     tcg_gen_add_i32(sr_m, sr_m, cpu_sflags[23]);
     tcg_gen_shli_i32(sr_m, sr_m, 1);
     tcg_gen_add_i32(sr_m, sr_m, cpu_sflags[22]);
 
-    // Check if SR[M2:M0] == 001
+    /* Check if SR[M2:M0] == 001 */
     tcg_gen_brcondi_i32(TCG_COND_EQ, sr_m, 0, if_1);
     tcg_gen_brcondi_i32(TCG_COND_EQ, sr_m, 1, if_1_else_if);
     tcg_gen_br(if_1_else);
 
-    // if
+    /* if */
     gen_set_label(if_1);
     tcg_gen_movi_i32(cpu_r[PC_REG], -0x20);
 
     tcg_gen_br(exit);
 
-    // else if
+    /* else if */
     gen_set_label(if_1_else_if);
     TCGv sr = tcg_temp_new_i32();
     tcg_gen_mov_i32(sr, cpu_sysr[SYSREG_RSR_SUP_WORD]);
@@ -3149,11 +3225,11 @@ static bool trans_RETS(DisasContext *ctx, arg_RETS *a){
     tcg_gen_mov_i32(cpu_r[PC_REG], cpu_sysr[SYSREG_RAR_SUP_WORD]);
     tcg_gen_br(exit);
 
-    //else
+    /* else */
     gen_set_label(if_1_else);
     tcg_gen_mov_i32(cpu_r[PC_REG], cpu_r[LR_REG]);
 
-    // exit
+    /* exit */
     gen_set_label(exit);
     gen_helper_avr32_tlb_flush(tcg_env);
     ctx->base.is_jmp = DISAS_JUMP;
@@ -3162,10 +3238,11 @@ static bool trans_RETS(DisasContext *ctx, arg_RETS *a){
     return true;
 }
 
-static bool trans_RJMP(DisasContext *ctx, arg_RJMP *a){
+static bool trans_RJMP(DisasContext *ctx, arg_RJMP *a)
+{
     int disp = a->disp8;
     disp |= (a->disp2 << 8);
-    if(disp >> 9){
+    if (disp >> 9) {
         disp |= 0xFFFFFC00;
     }
     disp = disp << 1;
@@ -3177,7 +3254,8 @@ static bool trans_RJMP(DisasContext *ctx, arg_RJMP *a){
     return true;
 }
 
-static bool trans_ROL(DisasContext *ctx, arg_ROL *a){
+static bool trans_ROL(DisasContext *ctx, arg_ROL *a)
+{
     TCGv tempC = tcg_temp_new_i32();
     TCGv res = tcg_temp_new_i32();
 
@@ -3194,7 +3272,8 @@ static bool trans_ROL(DisasContext *ctx, arg_ROL *a){
     return true;
 }
 
-static bool trans_ROR(DisasContext *ctx, arg_ROR *a){
+static bool trans_ROR(DisasContext *ctx, arg_ROR *a)
+{
     TCGv tempC = tcg_temp_new_i32();
     tcg_gen_andi_i32(tempC, cpu_r[a->rd], 0x00000001);
     tcg_gen_shri_i32(cpu_r[a->rd], cpu_r[a->rd], 1);
@@ -3209,7 +3288,8 @@ static bool trans_ROR(DisasContext *ctx, arg_ROR *a){
     return true;
 }
 
-static bool trans_RSUB_f1(DisasContext *ctx, arg_RSUB_f1 *a){
+static bool trans_RSUB_f1(DisasContext *ctx, arg_RSUB_f1 *a)
+{
     TCGv rd = cpu_r[a->rd];
     TCGv rs = cpu_r[a->rs];
 
@@ -3226,14 +3306,14 @@ static bool trans_RSUB_f1(DisasContext *ctx, arg_RSUB_f1 *a){
     tcg_gen_sub_i32(rd, rs, rd);
     tcg_gen_mov_i32(res, rd);
 
-    // Z flag
+    /* Z flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
 
-    //N-flag
+    /* N-flag */
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
@@ -3244,7 +3324,7 @@ static bool trans_RSUB_f1(DisasContext *ctx, arg_RSUB_f1 *a){
     tcg_gen_and_i32(right, right, res);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    // C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(temp, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -3255,7 +3335,8 @@ static bool trans_RSUB_f1(DisasContext *ctx, arg_RSUB_f1 *a){
     return true;
 }
 
-static bool trans_RSUB_f2(DisasContext *ctx, arg_RSUB_f2 *a){
+static bool trans_RSUB_f2(DisasContext *ctx, arg_RSUB_f2 *a)
+{
     int imm8 = a->imm8;
     imm8 = sign_extend_8(imm8);
 
@@ -3276,14 +3357,14 @@ static bool trans_RSUB_f2(DisasContext *ctx, arg_RSUB_f2 *a){
     tcg_gen_sub_i32(rd, imm, rs);
     tcg_gen_mov_i32(res, rd);
 
-    // Z flag
+    /* Z flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
 
-    //N-flag
+    /* N-flag */
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
@@ -3294,7 +3375,7 @@ static bool trans_RSUB_f2(DisasContext *ctx, arg_RSUB_f2 *a){
     tcg_gen_and_i32(right, right, res);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    // C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(temp, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -3305,7 +3386,8 @@ static bool trans_RSUB_f2(DisasContext *ctx, arg_RSUB_f2 *a){
     return true;
 }
 
-static bool trans_RSUBc(DisasContext *ctx, arg_RSUBc *a){
+static bool trans_RSUBc(DisasContext *ctx, arg_RSUBc *a)
+{
     TCGLabel *end = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -3318,9 +3400,8 @@ static bool trans_RSUBc(DisasContext *ctx, arg_RSUBc *a){
     tcg_gen_movi_i32(imm8, imm);
     tcg_gen_sub_i32(cpu_r[a->rd], imm8, cpu_r[a->rd]);
 
-
     gen_set_label(end);
-    if(a->rd == PC_REG){
+    if (a->rd == PC_REG) {
         ctx->base.is_jmp = DISAS_JUMP;
     }
 
@@ -3328,7 +3409,8 @@ static bool trans_RSUBc(DisasContext *ctx, arg_RSUBc *a){
     return true;
 }
 
-static bool trans_SATU(DisasContext *ctx, arg_SATU *a){
+static bool trans_SATU(DisasContext *ctx, arg_SATU *a)
+{
     TCGLabel *if1 = gen_new_label();
     TCGLabel *if1_else = gen_new_label();
     TCGLabel *exit = gen_new_label();
@@ -3344,7 +3426,7 @@ static bool trans_SATU(DisasContext *ctx, arg_SATU *a){
     tcg_gen_movi_i32(bp, a->bp5);
 
     tcg_gen_movi_i32(mask, 0xFFFFFFFF);
-    tcg_gen_shri_i32(mask, mask, 31- a->bp5-1);
+    tcg_gen_shri_i32(mask, mask, 31 - a->bp5 - 1);
 
     tcg_gen_shri_i32(temp, cpu_r[a->rd], a->sa5);
     tcg_gen_and_i32(subTemp, temp, mask);
@@ -3353,37 +3435,38 @@ static bool trans_SATU(DisasContext *ctx, arg_SATU *a){
     tcg_gen_brcondi_i32(TCG_COND_EQ, bp, 0, if1);
     tcg_gen_br(if1_else);
 
-    // if
+    /* if */
     gen_set_label(if1);
     tcg_gen_mov_i32(cpu_r[a->rd], temp);
     tcg_gen_br(exit);
 
-    // else
+    /* else */
     gen_set_label(if1_else);
     tcg_gen_movi_i32(cpu_sflags[sflagQ], 1);
     tcg_gen_shri_i32(temp, temp, 31);
     tcg_gen_brcondi_i32(TCG_COND_EQ, temp, 1, if2);
     tcg_gen_br(if2_else);
 
-    // if2
+    /* if2 */
     gen_set_label(if2);
     tcg_gen_movi_i32(cpu_r[a->rd], 0);
     tcg_gen_br(exit);
 
-    // if2_else
+    /* if2_else */
     gen_set_label(if2_else);
     tcg_gen_movi_i32(cpu_r[a->rd], 2);
     tcg_gen_shli_i32(cpu_r[a->rd], cpu_r[a->rd], a->bp5);
     tcg_gen_subi_i32(cpu_r[a->rd], cpu_r[a->rd], 1);
 
-    // exit
+    /* exit */
     gen_set_label(exit);
 
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_SBC(DisasContext *ctx, arg_SBC *a){
+static bool trans_SBC(DisasContext *ctx, arg_SBC *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv rx = tcg_temp_new_i32();
     TCGv ry = tcg_temp_new_i32();
@@ -3398,15 +3481,15 @@ static bool trans_SBC(DisasContext *ctx, arg_SBC *a){
     tcg_gen_sub_i32(res, res, cpu_sflags[sflagC]);
     tcg_gen_mov_i32(cpu_r[a->rd], res);
 
-    // z-flag
+    /* z-flag */
     tcg_gen_setcondi_i32(TCG_COND_EQ, cond, res, 0);
     tcg_gen_and_i32(cpu_sflags[sflagZ], cond, cpu_sflags[sflagZ]);
 
-    // n-flag
+    /* n-flag */
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //V-flag
+    /* V-flag */
     tcg_gen_shri_i32(rx, rx, 31);
     tcg_gen_shri_i32(ry, ry, 31);
 
@@ -3416,7 +3499,7 @@ static bool trans_SBC(DisasContext *ctx, arg_SBC *a){
     tcg_gen_and_i32(right, right, res);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    //C-flag
+    /* C-flag */
     tcg_gen_andc_i32(left, ry, rx);
     tcg_gen_and_i32(right, ry, res);
     tcg_gen_or_i32(left, left, right);
@@ -3424,12 +3507,12 @@ static bool trans_SBC(DisasContext *ctx, arg_SBC *a){
     tcg_gen_andc_i32(right, res, rx);
     tcg_gen_or_i32(cpu_sflags[sflagC], left, right);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_SBR(DisasContext *ctx, arg_SBR *a){
+static bool trans_SBR(DisasContext *ctx, arg_SBR *a)
+{
     TCGv bp = tcg_temp_new_i32();
     tcg_gen_movi_i32(bp, a->bp4);
     tcg_gen_shli_i32(bp, bp, 1);
@@ -3446,7 +3529,8 @@ static bool trans_SBR(DisasContext *ctx, arg_SBR *a){
     return true;
 }
 
-static bool trans_SCALL(DisasContext *ctx, arg_SCALL *a){
+static bool trans_SCALL(DisasContext *ctx, arg_SCALL *a)
+{
     TCGv sr = tcg_temp_new_i32();
     gen_pack_sr(sr);
 
@@ -3466,8 +3550,8 @@ static bool trans_SCALL(DisasContext *ctx, arg_SCALL *a){
     return true;
 }
 
-
-static bool trans_SCR(DisasContext *ctx, arg_SCR *a){
+static bool trans_SCR(DisasContext *ctx, arg_SCR *a)
+{
     TCGv res = tcg_temp_new_i32();
     TCGv res31 = tcg_temp_new_i32();
     TCGv rd31 = tcg_temp_new_i32();
@@ -3477,19 +3561,19 @@ static bool trans_SCR(DisasContext *ctx, arg_SCR *a){
     tcg_gen_shri_i32(rd31, cpu_r[a->rd], 31);
     tcg_gen_mov_i32(cpu_r[a->rd], res);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_andc_i32(cpu_sflags[sflagV], rd31, res31);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res31);
 
-    //Z-Flag
+    /* Z-Flag */
     TCGv temp = tcg_temp_new_i32();
     tcg_gen_setcondi_i32(TCG_COND_EQ, temp, res31, 0);
     tcg_gen_and_i32(cpu_sflags[sflagZ], cpu_sflags[sflagZ], temp);
 
-    //C-Flag
-    tcg_gen_andc_i32(cpu_sflags[sflagC],  res31, rd31);
+    /* C-Flag */
+    tcg_gen_andc_i32(cpu_sflags[sflagC], res31, rd31);
 
     ctx->base.pc_next += 2;
     return true;
@@ -3543,7 +3627,8 @@ static bool trans_SYNC(DisasContext *ctx, arg_SYNC *a)
     return true;
 }
 
-static bool trans_SR(DisasContext *ctx, arg_SR *a){
+static bool trans_SR(DisasContext *ctx, arg_SR *a)
+{
     TCGv reg = tcg_temp_new_i32();
     int val = checkCondition(a->cond4, reg, cpu_r, cpu_sflags);
 
@@ -3553,7 +3638,8 @@ static bool trans_SR(DisasContext *ctx, arg_SR *a){
     return true;
 }
 
-static bool trans_SSRF(DisasContext *ctx, arg_SSRF *a){
+static bool trans_SSRF(DisasContext *ctx, arg_SSRF *a)
+{
     tcg_gen_movi_i32(cpu_sflags[a->bp5], 0x1);
 
     ctx->base.pc_next += 2;
@@ -3582,7 +3668,8 @@ static bool trans_TLBW(DisasContext *ctx, arg_TLBW *a)
     return true;
 }
 
-static bool trans_STB_f1(DisasContext *ctx, arg_STB_f1 *a){
+static bool trans_STB_f1(DisasContext *ctx, arg_STB_f1 *a)
+{
     TCGv ptr = cpu_r[a->rp];
     TCGv rs = cpu_r[a->rs];
     tcg_gen_qemu_st_tl(rs, ptr, 0, MO_UB);
@@ -3592,7 +3679,8 @@ static bool trans_STB_f1(DisasContext *ctx, arg_STB_f1 *a){
     return true;
 }
 
-static bool trans_STB_f2(DisasContext *ctx, arg_STB_f2 *a){
+static bool trans_STB_f2(DisasContext *ctx, arg_STB_f2 *a)
+{
     TCGv ptr = cpu_r[a->rp];
     TCGv rs = cpu_r[a->rs];
     tcg_gen_subi_i32(ptr, ptr, 0x1);
@@ -3602,7 +3690,8 @@ static bool trans_STB_f2(DisasContext *ctx, arg_STB_f2 *a){
     return true;
 }
 
-static bool trans_STB_f3(DisasContext *ctx, arg_STB_f3 *a){
+static bool trans_STB_f3(DisasContext *ctx, arg_STB_f3 *a)
+{
 
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_addi_i32(ptr, cpu_r[a->rp], a->disp3);
@@ -3614,9 +3703,10 @@ static bool trans_STB_f3(DisasContext *ctx, arg_STB_f3 *a){
     return true;
 }
 
-static bool trans_STB_f4(DisasContext *ctx, arg_STB_f4 *a){
+static bool trans_STB_f4(DisasContext *ctx, arg_STB_f4 *a)
+{
     int disp = a->imm16;
-    if(disp >> 15 == 1){
+    if (disp >> 15 == 1) {
         disp |= 0xFFFF0000;
     }
     TCGv ptr = tcg_temp_new_i32();
@@ -3629,7 +3719,8 @@ static bool trans_STB_f4(DisasContext *ctx, arg_STB_f4 *a){
     return true;
 }
 
-static bool trans_STB_f5(DisasContext *ctx, arg_STB_f5 *a){
+static bool trans_STB_f5(DisasContext *ctx, arg_STB_f5 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_shli_i32(ptr, cpu_r[a->ry], a->sa);
     tcg_gen_add_i32(ptr, ptr, cpu_r[a->rx]);
@@ -3640,7 +3731,8 @@ static bool trans_STB_f5(DisasContext *ctx, arg_STB_f5 *a){
     return true;
 }
 
-static bool trans_STBc(DisasContext *ctx, arg_STBc *a){
+static bool trans_STBc(DisasContext *ctx, arg_STBc *a)
+{
     TCGLabel *exit = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -3656,10 +3748,11 @@ static bool trans_STBc(DisasContext *ctx, arg_STBc *a){
     return true;
 }
 
-static bool trans_STD_f1(DisasContext *ctx, arg_STD_f1 *a){
+static bool trans_STD_f1(DisasContext *ctx, arg_STD_f1 *a)
+{
     TCGv ptr = cpu_r[a->rp];
-    TCGv rs = cpu_r[a->rs*2];
-    TCGv rsp = cpu_r[a->rs*2 + 1];
+    TCGv rs = cpu_r[a->rs * 2];
+    TCGv rsp = cpu_r[a->rs * 2 + 1];
 
     tcg_gen_qemu_st_i32(rsp, ptr, 0, MO_BEUL);
     tcg_gen_addi_i32(ptr, ptr, 4);
@@ -3670,11 +3763,11 @@ static bool trans_STD_f1(DisasContext *ctx, arg_STD_f1 *a){
     return true;
 }
 
-
-static bool trans_STD_f2(DisasContext *ctx, arg_STD_f2 *a){
+static bool trans_STD_f2(DisasContext *ctx, arg_STD_f2 *a)
+{
     TCGv ptr = cpu_r[a->rp];
-    TCGv rs = cpu_r[a->rs*2];
-    TCGv rsp = cpu_r[a->rs*2 + 1];
+    TCGv rs = cpu_r[a->rs * 2];
+    TCGv rsp = cpu_r[a->rs * 2 + 1];
 
     tcg_gen_subi_i32(ptr, ptr, 0x4);
     tcg_gen_qemu_st_i32(rs, ptr, 0, MO_BEUL);
@@ -3685,11 +3778,12 @@ static bool trans_STD_f2(DisasContext *ctx, arg_STD_f2 *a){
     return true;
 }
 
-//TODO: add tests
-static bool trans_STD_f3(DisasContext *ctx, arg_STD_f3 *a){
+/* TODO: add tests */
+static bool trans_STD_f3(DisasContext *ctx, arg_STD_f3 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
-    TCGv rs = cpu_r[a->rs*2];
-    TCGv rsp = cpu_r[a->rs*2 + 1];
+    TCGv rs = cpu_r[a->rs * 2];
+    TCGv rsp = cpu_r[a->rs * 2 + 1];
 
     tcg_gen_mov_i32(ptr, cpu_r[a->rp]);
 
@@ -3702,16 +3796,17 @@ static bool trans_STD_f3(DisasContext *ctx, arg_STD_f3 *a){
     return true;
 }
 
-static bool trans_STD_f4(DisasContext *ctx, arg_STD_f4 *a){
+static bool trans_STD_f4(DisasContext *ctx, arg_STD_f4 *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     TCGv disp = tcg_temp_new_i32();
-    TCGv rs = cpu_r[a->rs*2];
-    TCGv rsp = cpu_r[a->rs*2 + 1];
+    TCGv rs = cpu_r[a->rs * 2];
+    TCGv rsp = cpu_r[a->rs * 2 + 1];
 
     int dispI = a->disp16;
 
-    //Sign extend
-    if(dispI >> 15){
+    /* Sign extend */
+    if (dispI >> 15) {
         dispI |= 0xFFFF0000;
     }
 
@@ -3727,9 +3822,10 @@ static bool trans_STD_f4(DisasContext *ctx, arg_STD_f4 *a){
     return true;
 }
 
-//TODO: Add STD format 5.
+/* TODO: Add STD format 5. */
 
-static bool trans_STH_f1(DisasContext *ctx, arg_STH_f1 *a){
+static bool trans_STH_f1(DisasContext *ctx, arg_STH_f1 *a)
+{
     tcg_gen_qemu_st_tl(cpu_r[a->rs], cpu_r[a->rp], 0x0, MO_BEUW);
     tcg_gen_addi_i32(cpu_r[a->rp], cpu_r[a->rp], 2);
 
@@ -3737,7 +3833,8 @@ static bool trans_STH_f1(DisasContext *ctx, arg_STH_f1 *a){
     return true;
 }
 
-static bool trans_STH_f2(DisasContext *ctx, arg_STH_f2 *a){
+static bool trans_STH_f2(DisasContext *ctx, arg_STH_f2 *a)
+{
     tcg_gen_subi_i32(cpu_r[a->rp], cpu_r[a->rp], 2);
     tcg_gen_qemu_st_tl(cpu_r[a->rs], cpu_r[a->rp], 0x0, MO_BEUW);
 
@@ -3745,7 +3842,8 @@ static bool trans_STH_f2(DisasContext *ctx, arg_STH_f2 *a){
     return true;
 }
 
-static bool trans_STH_f3(DisasContext *ctx, arg_STH_f3 *a){
+static bool trans_STH_f3(DisasContext *ctx, arg_STH_f3 *a)
+{
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp3 << 1);
 
@@ -3755,9 +3853,10 @@ static bool trans_STH_f3(DisasContext *ctx, arg_STH_f3 *a){
     return true;
 }
 
-static bool trans_STH_f4(DisasContext *ctx, arg_STH_f4 *a){
+static bool trans_STH_f4(DisasContext *ctx, arg_STH_f4 *a)
+{
     int disp = a->imm16;
-    if(disp >> 15 == 1){
+    if (disp >> 15 == 1) {
         disp |= 0xFFFF0000;
     }
     TCGv addr = tcg_temp_new_i32();
@@ -3766,12 +3865,12 @@ static bool trans_STH_f4(DisasContext *ctx, arg_STH_f4 *a){
 
     tcg_gen_qemu_st_tl(rs, addr, 0x0, MO_BEUW);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_STH_f5(DisasContext *ctx, arg_STH_f5 *a){
+static bool trans_STH_f5(DisasContext *ctx, arg_STH_f5 *a)
+{
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_shli_i32(addr, cpu_r[a->ry], a->sa);
     tcg_gen_add_i32(addr, addr, cpu_r[a->rx]);
@@ -3779,12 +3878,12 @@ static bool trans_STH_f5(DisasContext *ctx, arg_STH_f5 *a){
 
     tcg_gen_qemu_st_tl(rs, addr, 0x0, MO_BEUW);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_STHc(DisasContext *ctx, arg_STHc *a){
+static bool trans_STHc(DisasContext *ctx, arg_STHc *a)
+{
     TCGLabel *exit = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -3831,13 +3930,14 @@ static bool trans_XCHG(DisasContext *ctx, arg_XCHG *a)
     return true;
 }
 
-static bool trans_STDSP(DisasContext *ctx, arg_STDSP *a){
+static bool trans_STDSP(DisasContext *ctx, arg_STDSP *a)
+{
     TCGv ptr = tcg_temp_new_i32();
     tcg_gen_mov_i32(ptr, cpu_r[SP_REG]);
     tcg_gen_andi_i32(ptr, ptr, 0xFFFFFFFC);
 
     TCGv disp = tcg_temp_new_i32();
-    tcg_gen_movi_i32(disp, a->disp<<2);
+    tcg_gen_movi_i32(disp, a->disp << 2);
 
     tcg_gen_add_i32(ptr, ptr, disp);
 
@@ -3847,24 +3947,24 @@ static bool trans_STDSP(DisasContext *ctx, arg_STDSP *a){
     return true;
 }
 
-static bool trans_STM(DisasContext *ctx, arg_STM *a){
+static bool trans_STM(DisasContext *ctx, arg_STM *a)
+{
     int regFlag = 0;
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_mov_i32(addr, cpu_r[a->rp]);
-    if(a->op == 1){
-        for (int i = 0; i <= 15; i++){
+    if (a->op == 1) {
+        for (int i = 0; i <= 15; i++) {
             regFlag = a->list >> i & 1;
-            if(regFlag == 1){
+            if (regFlag == 1) {
                 tcg_gen_subi_i32(addr, addr, 0x4);
                 tcg_gen_qemu_st_tl(cpu_r[i], addr, 0x00, MO_BEUL);
             }
         }
         tcg_gen_mov_i32(cpu_r[a->rp], addr);
-    }
-    else{
-        for (int i = 15; i >= 0; i--){
+    } else {
+        for (int i = 15; i >= 0; i--) {
             regFlag = a->list >> i & 1;
-            if(regFlag == 1){
+            if (regFlag == 1) {
                 tcg_gen_qemu_st_tl(cpu_r[i], addr, 0x00, MO_BEUL);
                 tcg_gen_addi_i32(addr, addr, 0x4);
             }
@@ -3875,26 +3975,26 @@ static bool trans_STM(DisasContext *ctx, arg_STM *a){
     return true;
 }
 
-static bool trans_STMTS(DisasContext *ctx, arg_STMTS *a){
+static bool trans_STMTS(DisasContext *ctx, arg_STMTS *a)
+{
     int regFlag = 0;
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_mov_i32(addr, cpu_r[a->rp]);
 
-    if(a->op == 1){
-        for (int i = 0; i <= 15; i++){
+    if (a->op == 1) {
+        for (int i = 0; i <= 15; i++) {
             regFlag = (a->list >> i) & 1;
-            if(regFlag == 1){
+            if (regFlag == 1) {
                 tcg_gen_subi_i32(addr, addr, 0x4);
                 tcg_gen_qemu_st_tl(i == SP_REG ? cpu_task_sp : cpu_r[i], addr,
                                    0x00, MO_BEUL);
             }
         }
         tcg_gen_mov_i32(cpu_r[a->rp], addr);
-    }
-    else{
-        for (int i = 15; i >= 0; i--){
+    } else {
+        for (int i = 15; i >= 0; i--) {
             regFlag = (a->list >> i) & 1;
-            if(regFlag == 1){
+            if (regFlag == 1) {
                 tcg_gen_qemu_st_tl(i == SP_REG ? cpu_task_sp : cpu_r[i], addr,
                                    0x00, MO_BEUL);
                 tcg_gen_addi_i32(addr, addr, 0x4);
@@ -3906,7 +4006,8 @@ static bool trans_STMTS(DisasContext *ctx, arg_STMTS *a){
     return true;
 }
 
-static bool trans_STW_f1(DisasContext *ctx, arg_STW_f1 *a){
+static bool trans_STW_f1(DisasContext *ctx, arg_STW_f1 *a)
+{
     tcg_gen_qemu_st_tl(cpu_r[a->rs], cpu_r[a->rp], 0, MO_BEUL);
     tcg_gen_addi_i32(cpu_r[a->rp], cpu_r[a->rp], 4);
 
@@ -3914,7 +4015,8 @@ static bool trans_STW_f1(DisasContext *ctx, arg_STW_f1 *a){
     return true;
 }
 
-static bool trans_STW_f2(DisasContext *ctx, arg_STW_f2 *a){
+static bool trans_STW_f2(DisasContext *ctx, arg_STW_f2 *a)
+{
     tcg_gen_subi_i32(cpu_r[a->rp], cpu_r[a->rp], 4);
     tcg_gen_qemu_st_tl(cpu_r[a->rs], cpu_r[a->rp], 0, MO_BEUL);
 
@@ -3922,20 +4024,22 @@ static bool trans_STW_f2(DisasContext *ctx, arg_STW_f2 *a){
     return true;
 }
 
-static bool trans_STW_f3(DisasContext *ctx, arg_STW_f3 *a){
+static bool trans_STW_f3(DisasContext *ctx, arg_STW_f3 *a)
+{
     TCGv addr = tcg_temp_new_i32();
-    tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp4<<2);
+    tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp4 << 2);
     tcg_gen_qemu_st_tl(cpu_r[a->rs], addr, 0, MO_BEUL);
 
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_STW_f4(DisasContext *ctx, arg_STW_f4 *a){
+static bool trans_STW_f4(DisasContext *ctx, arg_STW_f4 *a)
+{
     int disp = a->imm16;
 
-    //Sign extend
-    if(disp >> 15){
+    /* Sign extend */
+    if (disp >> 15) {
         disp |= 0xFFFF0000;
     }
 
@@ -3948,7 +4052,8 @@ static bool trans_STW_f4(DisasContext *ctx, arg_STW_f4 *a){
     return true;
 }
 
-static bool trans_STW_f5(DisasContext *ctx, arg_STW_f5 *a){
+static bool trans_STW_f5(DisasContext *ctx, arg_STW_f5 *a)
+{
     TCGv addr = tcg_temp_new_i32();
     tcg_gen_shli_i32(addr, cpu_r[a->ry], a->sa);
     tcg_gen_add_i32(addr, addr, cpu_r[a->rx]);
@@ -3959,7 +4064,8 @@ static bool trans_STW_f5(DisasContext *ctx, arg_STW_f5 *a){
     return true;
 }
 
-static bool trans_STWcond(DisasContext *ctx, arg_STWcond *a){
+static bool trans_STWcond(DisasContext *ctx, arg_STWcond *a)
+{
     TCGLabel *leave = gen_new_label();
 
     TCGv reg = tcg_temp_new_i32();
@@ -3967,7 +4073,7 @@ static bool trans_STWcond(DisasContext *ctx, arg_STWcond *a){
 
     tcg_gen_brcondi_i32(TCG_COND_NE, reg, val, leave);
     TCGv addr = tcg_temp_new_i32();
-    tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp9 <<2 );
+    tcg_gen_addi_i32(addr, cpu_r[a->rp], a->disp9 << 2);
     tcg_gen_qemu_st_tl(cpu_r[a->rd], addr, 0, MO_BEUL);
 
     gen_set_label(leave);
@@ -3976,7 +4082,8 @@ static bool trans_STWcond(DisasContext *ctx, arg_STWcond *a){
     return true;
 }
 
-static bool trans_SUB_f1(DisasContext *ctx, arg_SUB_f1 *a){
+static bool trans_SUB_f1(DisasContext *ctx, arg_SUB_f1 *a)
+{
     TCGv op1 = tcg_temp_new_i32();
     TCGv op2 = tcg_temp_new_i32();
     tcg_gen_mov_i32(op1, cpu_r[a->rd]);
@@ -3989,24 +4096,25 @@ static bool trans_SUB_f1(DisasContext *ctx, arg_SUB_f1 *a){
     tcg_gen_sub_i32(res, op1, op2);
     tcg_gen_mov_i32(cpu_r[a->rd], res);
 
-    // Z-Flag
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); // Zf = Res == 0
+    /* Z-Flag */
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = Res == 0 */
 
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_andc_i32(left, op1, op2);
     tcg_gen_andc_i32(left, left, res);
     tcg_gen_and_i32(right, op2, res);
     tcg_gen_andc_i32(right, right, op1);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(middel, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -4014,13 +4122,13 @@ static bool trans_SUB_f1(DisasContext *ctx, arg_SUB_f1 *a){
     tcg_gen_or_i32(left, left, middel);
     tcg_gen_or_i32(cpu_sflags[sflagC], left, right);
 
-
     ctx->base.pc_next += 2;
     return true;
 }
 
-static bool trans_SUB_f2(DisasContext *ctx, arg_SUB_f2 *a){
-    //Format 2
+static bool trans_SUB_f2(DisasContext *ctx, arg_SUB_f2 *a)
+{
+    /* Format 2 */
     TCGv op1 = tcg_temp_new_i32();
     TCGv op2 = tcg_temp_new_i32();
     tcg_gen_shli_i32(op2, cpu_r[a->ry], a->sa);
@@ -4034,23 +4142,24 @@ static bool trans_SUB_f2(DisasContext *ctx, arg_SUB_f2 *a){
     tcg_gen_sub_i32(res, op1, op2);
     tcg_gen_sub_i32(cpu_r[a->rd], op1, op2);
 
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); // Zf = Res == 0
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = Res == 0 */
 
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_andc_i32(left, op1, op2);
     tcg_gen_andc_i32(left, left, res);
     tcg_gen_and_i32(right, op2, res);
     tcg_gen_andc_i32(right, right, op1);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(middel, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -4062,19 +4171,19 @@ static bool trans_SUB_f2(DisasContext *ctx, arg_SUB_f2 *a){
     return true;
 }
 
-static bool trans_SUB_f3(DisasContext *ctx, arg_SUB_f3 *a){
+static bool trans_SUB_f3(DisasContext *ctx, arg_SUB_f3 *a)
+{
     TCGv op1 = tcg_temp_new_i32();
     TCGv op2 = tcg_temp_new_i32();
     tcg_gen_mov_i32(op1, cpu_r[a->rd]);
 
-    if(a->rd == SP_REG){
+    if (a->rd == SP_REG) {
         int imm = a->imm8 << 2;
-        if((imm >> 9) == 1){
+        if ((imm >> 9) == 1) {
             imm |= 0xFFFFFC00;
         }
         tcg_gen_movi_i32(op2, imm);
-    }
-    else{
+    } else {
         int imm = sign_extend_8(a->imm8);
         tcg_gen_movi_i32(op2, imm);
     }
@@ -4085,24 +4194,24 @@ static bool trans_SUB_f3(DisasContext *ctx, arg_SUB_f3 *a){
     TCGv res = tcg_temp_new_i32();
     tcg_gen_sub_i32(res, op1, op2);
     tcg_gen_mov_i32(cpu_r[a->rd], res);
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); // Zf = Res == 0
-
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = Res == 0 */
 
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_andc_i32(left, op1, op2);
     tcg_gen_andc_i32(left, left, res);
     tcg_gen_and_i32(right, op2, res);
     tcg_gen_andc_i32(right, right, op1);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(middel, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -4114,13 +4223,14 @@ static bool trans_SUB_f3(DisasContext *ctx, arg_SUB_f3 *a){
     return true;
 }
 
-static bool trans_SUB_f4(DisasContext *ctx, arg_SUB_f4 *a){
+static bool trans_SUB_f4(DisasContext *ctx, arg_SUB_f4 *a)
+{
     int imm = a->imml;
     imm |= (a->immm << 16);
     imm |= (a->immu << 17);
 
-    //Sign extend
-    if(imm >> 20){
+    /* Sign extend */
+    if (imm >> 20) {
         imm |= 0xFFF00000;
     }
 
@@ -4135,23 +4245,24 @@ static bool trans_SUB_f4(DisasContext *ctx, arg_SUB_f4 *a){
     TCGv res = tcg_temp_new_i32();
     tcg_gen_sub_i32(res, op1, op2);
     tcg_gen_sub_i32(cpu_r[a->rd], op1, op2);
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); // Zf = Res == 0
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = Res == 0 */
 
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_andc_i32(left, op1, op2);
     tcg_gen_andc_i32(left, left, res);
     tcg_gen_and_i32(right, op2, res);
     tcg_gen_andc_i32(right, right, op1);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(middel, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -4159,17 +4270,17 @@ static bool trans_SUB_f4(DisasContext *ctx, arg_SUB_f4 *a){
     tcg_gen_or_i32(left, left, middel);
     tcg_gen_or_i32(cpu_sflags[sflagC], left, right);
 
-
     ctx->base.pc_next += 4;
     return true;
 }
 
-static bool trans_SUB_f5(DisasContext *ctx, arg_SUB_f5 *a){
+static bool trans_SUB_f5(DisasContext *ctx, arg_SUB_f5 *a)
+{
     int imm = a->imm16;
 
-    //Sign extend
-    if(imm >> 15){
-        imm = imm|0xFFFF0000;
+    /* Sign extend */
+    if (imm >> 15) {
+        imm = imm | 0xFFFF0000;
     }
 
     TCGv op1 = tcg_temp_new_i32();
@@ -4183,23 +4294,24 @@ static bool trans_SUB_f5(DisasContext *ctx, arg_SUB_f5 *a){
     TCGv res = tcg_temp_new_i32();
     tcg_gen_sub_i32(res, op1, op2);
     tcg_gen_sub_i32(cpu_r[a->rd], op1, op2);
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0); // Zf = Res == 0
+    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_sflags[sflagZ], res,
+                        0); /* Zf = Res == 0 */
 
     tcg_gen_shri_i32(res, res, 31);
     tcg_gen_shri_i32(op1, op1, 31);
     tcg_gen_shri_i32(op2, op2, 31);
 
-    //V-Flag
+    /* V-Flag */
     tcg_gen_andc_i32(left, op1, op2);
     tcg_gen_andc_i32(left, left, res);
     tcg_gen_and_i32(right, op2, res);
     tcg_gen_andc_i32(right, right, op1);
     tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-    //N-Flag
+    /* N-Flag */
     tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-    //C-Flag
+    /* C-Flag */
     tcg_gen_andc_i32(left, op2, op1);
     tcg_gen_and_i32(middel, op2, res);
     tcg_gen_andc_i32(right, res, op1);
@@ -4211,8 +4323,12 @@ static bool trans_SUB_f5(DisasContext *ctx, arg_SUB_f5 *a){
     return true;
 }
 
-//TODO: check if f needs to be set or not, as manual has contradictory statements
-static bool trans_SUBc_f1(DisasContext *ctx, arg_SUBc_f1 *a){
+/*
+ * TODO: Check if f needs to be set or not, as manual has contradictory
+ * statements.
+ */
+static bool trans_SUBc_f1(DisasContext *ctx, arg_SUBc_f1 *a)
+{
     TCGLabel *if1 = gen_new_label();
     TCGLabel *exit = gen_new_label();
 
@@ -4226,23 +4342,23 @@ static bool trans_SUBc_f1(DisasContext *ctx, arg_SUBc_f1 *a){
     int val = checkCondition(a->cond4, reg, cpu_r, cpu_sflags);
     tcg_gen_brcondi_i32(TCG_COND_NE, reg, val, exit);
 
-    // if
+    /* if */
     gen_set_label(if1);
-    // See 32-bit Atmel Architecture Manual chapter 9.4 SUB{cond4} (page.358)
-    // https://ww1.microchip.com/downloads/en/devicedoc/doc32000.pdf
+    /* See 32-bit Atmel Architecture Manual chapter 9.4 SUB{cond4} (page.358) */
+    /* https://ww1.microchip.com/downloads/en/devicedoc/doc32000.pdf */
     tcg_gen_subi_i32(res, cpu_r[a->rd], sign_extend_8(a->imm8));
     tcg_gen_mov_i32(rd, cpu_r[a->rd]);
     tcg_gen_movi_i32(k, sign_extend_8(a->imm8));
     tcg_gen_mov_i32(cpu_r[a->rd], res);
 
-    if(a->f == 1){
-        //z-flag
+    if (a->f == 1) {
+        /* z-flag */
         tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_sflags[sflagZ], res, 0);
-        //n-flag
+        /* n-flag */
         tcg_gen_shri_i32(res, res, 31);
         tcg_gen_mov_i32(cpu_sflags[sflagN], res);
 
-        //v-flag
+        /* v-flag */
         tcg_gen_shri_i32(rd, rd, 31);
         tcg_gen_shri_i32(k, k, 31);
 
@@ -4252,7 +4368,7 @@ static bool trans_SUBc_f1(DisasContext *ctx, arg_SUBc_f1 *a){
         tcg_gen_and_i32(right, right, res);
         tcg_gen_or_i32(cpu_sflags[sflagV], left, right);
 
-        //c-flag
+        /* c-flag */
         tcg_gen_andc_i32(left, k, rd);
         tcg_gen_and_i32(right, k, res);
         tcg_gen_or_i32(left, left, right);
@@ -4265,7 +4381,8 @@ static bool trans_SUBc_f1(DisasContext *ctx, arg_SUBc_f1 *a){
     return true;
 }
 
-static bool trans_SUBc_f2(DisasContext *ctx, arg_SUBc_f2 *a){
+static bool trans_SUBc_f2(DisasContext *ctx, arg_SUBc_f2 *a)
+{
     TCGLabel *if1 = gen_new_label();
     TCGLabel *exit = gen_new_label();
 
@@ -4273,7 +4390,7 @@ static bool trans_SUBc_f2(DisasContext *ctx, arg_SUBc_f2 *a){
     int val = checkCondition(a->cond4, reg, cpu_r, cpu_sflags);
     tcg_gen_brcondi_i32(TCG_COND_NE, reg, val, exit);
 
-    // if
+    /* if */
     gen_set_label(if1);
     tcg_gen_sub_i32(cpu_r[a->rd], cpu_r[a->rx], cpu_r[a->ry]);
 
@@ -4282,7 +4399,8 @@ static bool trans_SUBc_f2(DisasContext *ctx, arg_SUBc_f2 *a){
     return true;
 }
 
-static bool trans_TNBZ(DisasContext *ctx, arg_TNBZ *a){
+static bool trans_TNBZ(DisasContext *ctx, arg_TNBZ *a)
+{
     TCGv rdl = tcg_temp_new_i32();
     TCGv rdml = tcg_temp_new_i32();
     TCGv rdmr = tcg_temp_new_i32();
@@ -4318,7 +4436,8 @@ static bool trans_TNBZ(DisasContext *ctx, arg_TNBZ *a){
     return true;
 }
 
-static bool trans_TST(DisasContext *ctx, arg_TST *a){
+static bool trans_TST(DisasContext *ctx, arg_TST *a)
+{
     TCGv res = tcg_temp_new_i32();
     tcg_gen_and_i32(res, cpu_r[a->rd], cpu_r[a->rs]);
 
@@ -4329,7 +4448,8 @@ static bool trans_TST(DisasContext *ctx, arg_TST *a){
     return true;
 }
 
-static void avr32_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs){
+static void avr32_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
+{
     CPUAVR32AState *env = cpu_env(cs);
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
     ctx->env = env;
@@ -4338,16 +4458,18 @@ static void avr32_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs){
     ctx->pc = ctx->base.pc_first;
 }
 
-static void avr32_tr_tb_start(DisasContextBase *db, CPUState *cs){
-
+static void avr32_tr_tb_start(DisasContextBase *db, CPUState *cs)
+{
 }
 
-static void avr32_tr_insn_start(DisasContextBase *dcbase, CPUState *cs){
+static void avr32_tr_insn_start(DisasContextBase *dcbase, CPUState *cs)
+{
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
     tcg_gen_insn_start(ctx->base.pc_next, 0, 0);
 }
 
-static void avr32_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs){
+static void avr32_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
+{
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
     uint32_t insn;
 
@@ -4358,50 +4480,51 @@ static void avr32_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs){
         return;
     }
     if (!decode_insn(ctx, insn)) {
-        error_report("[AVR32-TCG] avr32_tr_translate_insn, illegal instr, pc: 0x%04" PRIx64 "\n",
+        error_report("[AVR32-TCG] avr32_tr_translate_insn, illegal instr, pc: "
+                     "0x%04" PRIx64,
                      (uint64_t)ctx->base.pc_next);
         gen_helper_raise_illegal_instruction(tcg_env);
     }
 }
 
-static void avr32_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs){
-    DisasContext* ctx = container_of(dcbase, DisasContext, base);
-    switch(ctx->base.is_jmp) {
-        case DISAS_NEXT:
-            break;
-        case DISAS_TOO_MANY:
-            gen_goto_tb(ctx, 1, ctx->base.pc_next);
-            break;
-        case DISAS_NORETURN:
-            break;
-        case DISAS_JUMP:
-            tcg_gen_lookup_and_goto_ptr();
-            break;
-        case DISAS_CHAIN:
-            gen_goto_tb(ctx, 1, ctx->base.pc_next);
-            tcg_gen_movi_tl(cpu_r[PC_REG], ctx->base.pc_next);
-            /* fall through */
-        case DISAS_EXIT:
-            tcg_gen_exit_tb(NULL, 0);
-            break;
-        default:
-            printf("[avr32_tr_tb_stop] ERROR: undefined condition\n");
-            g_assert_not_reached();
+static void avr32_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
+{
+    DisasContext *ctx = container_of(dcbase, DisasContext, base);
+    switch (ctx->base.is_jmp) {
+    case DISAS_NEXT:
+        break;
+    case DISAS_TOO_MANY:
+        gen_goto_tb(ctx, 1, ctx->base.pc_next);
+        break;
+    case DISAS_NORETURN:
+        break;
+    case DISAS_JUMP:
+        tcg_gen_lookup_and_goto_ptr();
+        break;
+    case DISAS_CHAIN:
+        gen_goto_tb(ctx, 1, ctx->base.pc_next);
+        tcg_gen_movi_tl(cpu_r[PC_REG], ctx->base.pc_next);
+        /* fall through */
+    case DISAS_EXIT:
+        tcg_gen_exit_tb(NULL, 0);
+        break;
+    default:
+        printf("[avr32_tr_tb_stop] ERROR: undefined condition\n");
+        g_assert_not_reached();
     }
 }
 
 static const TranslatorOps avr32_tr_ops = {
-        .init_disas_context = avr32_tr_init_disas_context,
-        .tb_start           = avr32_tr_tb_start,
-        .insn_start         = avr32_tr_insn_start,
-        .translate_insn     = avr32_tr_translate_insn,
-        .tb_stop            = avr32_tr_tb_stop,
+    .init_disas_context = avr32_tr_init_disas_context,
+    .tb_start = avr32_tr_tb_start,
+    .insn_start = avr32_tr_insn_start,
+    .translate_insn = avr32_tr_translate_insn,
+    .tb_stop = avr32_tr_tb_stop,
 };
-
 
 void avr32_translate_code(CPUState *cs, TranslationBlock *tb, int *max_insns,
                           vaddr pc, void *host_pc)
 {
-    DisasContext dc = { };
+    DisasContext dc = {};
     translator_loop(cs, tb, max_insns, pc, host_pc, &avr32_tr_ops, &dc.base);
 }

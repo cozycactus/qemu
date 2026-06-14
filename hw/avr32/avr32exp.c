@@ -1,42 +1,30 @@
 /*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
  * QEMU AVR32 Example board
  *
  * Copyright (c) 2022-2023 Florian Göhler
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, see
- * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 
 #include "qemu/osdep.h"
-#include "qemu/module.h"
-#include "qemu/units.h"
-#include "qapi/error.h"
-#include "system/memory.h"
-#include "system/address-spaces.h"
+#include "avr32exp.h"
 #include "chardev/char-fe.h"
-#include "system/system.h"
 #include "hw/core/qdev-properties.h"
 #include "hw/core/sysbus.h"
-#include "qom/object.h"
 #include "hw/misc/unimp.h"
-#include "avr32exp.h"
+#include "qapi/error.h"
+#include "qemu/module.h"
+#include "qemu/units.h"
+#include "qom/object.h"
+#include "system/address-spaces.h"
+#include "system/memory.h"
+#include "system/system.h"
 
 struct AVR32EXPMcuClass {
-    /*< private >*/
+    /*< private > */
     SysBusDeviceClass parent_class;
 
-    /*< public >*/
+    /*< public > */
     const char *cpu_type;
 
     size_t flash_size;
@@ -110,8 +98,7 @@ typedef struct AVR32EXPMcuClass AVR32EXPMcuClass;
 #define ATMEL_PDC_TXTEN BIT(8)
 #define ATMEL_PDC_TXTDIS BIT(9)
 
-DECLARE_CLASS_CHECKERS(AVR32EXPMcuClass, AVR32EXP_MCU,
-        TYPE_AVR32EXP_MCU)
+DECLARE_CLASS_CHECKERS(AVR32EXPMcuClass, AVR32EXP_MCU, TYPE_AVR32EXP_MCU)
 
 static uint64_t avr32exp_test_exit_read(void *opaque, hwaddr offset,
                                         unsigned size)
@@ -142,9 +129,10 @@ static void avr32exp_test_exit_write(void *opaque, hwaddr offset,
         s->test_expected = val;
         return;
     case AVR32EXP_TEST_EXIT_STATUS:
-        fprintf(stderr,
-                "avr32exp-test-exit: status=0x%08x result=0x%08x expected=0x%08x\n",
-                val, s->test_result, s->test_expected);
+        fprintf(
+            stderr,
+            "avr32exp-test-exit: status=0x%08x result=0x%08x expected=0x%08x\n",
+            val, s->test_result, s->test_expected);
         exit(val == AVR32EXP_TEST_PASS ? 0 : 1);
     default:
         return;
@@ -156,13 +144,13 @@ static const MemoryRegionOps avr32exp_test_exit_ops = {
     .write = avr32exp_test_exit_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
+            .min_access_size = 4,
+            .max_access_size = 4,
+        },
     .impl = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
+            .min_access_size = 4,
+            .max_access_size = 4,
+        },
 };
 
 static int avr32exp_intc_irq_level(AVR32EXPMcuState *mcu, unsigned irq)
@@ -224,17 +212,17 @@ static uint64_t avr32exp_intc_read(void *opaque, hwaddr offset, unsigned size)
 {
     AVR32EXPMcuState *mcu = opaque;
 
-    if (offset >= AVR32EXP_INTC_INTPR_BASE
-        && offset < AVR32EXP_INTC_INTPR_BASE + AVR32EXP_INTC_NR_IRQS * 4
-        && (offset & 3) == 0) {
+    if (offset >= AVR32EXP_INTC_INTPR_BASE &&
+        offset < AVR32EXP_INTC_INTPR_BASE + AVR32EXP_INTC_NR_IRQS * 4 &&
+        (offset & 3) == 0) {
         unsigned irq = offset / 4;
 
         return irq == AVR32EXP_USART1_IRQ ? mcu->intc_intpr[irq] : 0;
     }
 
-    if (offset >= AVR32EXP_INTC_INTREQ_BASE
-        && offset < AVR32EXP_INTC_INTREQ_BASE + AVR32EXP_INTC_NR_IRQS * 4
-        && (offset & 3) == 0) {
+    if (offset >= AVR32EXP_INTC_INTREQ_BASE &&
+        offset < AVR32EXP_INTC_INTREQ_BASE + AVR32EXP_INTC_NR_IRQS * 4 &&
+        (offset & 3) == 0) {
         return mcu->intc_intreq[(offset - AVR32EXP_INTC_INTREQ_BASE) / 4];
     }
 
@@ -245,8 +233,8 @@ static uint64_t avr32exp_intc_read(void *opaque, hwaddr offset, unsigned size)
     case AVR32EXP_INTC_INTCAUSE3: {
         int level = (AVR32EXP_INTC_INTCAUSE0 - offset) / 4;
 
-        if (mcu->intc_pending_irq >= 0
-            && avr32exp_intc_irq_level(mcu, mcu->intc_pending_irq) == level) {
+        if (mcu->intc_pending_irq >= 0 &&
+            avr32exp_intc_irq_level(mcu, mcu->intc_pending_irq) == level) {
             return mcu->intc_pending_irq;
         }
         return 0;
@@ -256,14 +244,14 @@ static uint64_t avr32exp_intc_read(void *opaque, hwaddr offset, unsigned size)
     }
 }
 
-static void avr32exp_intc_write(void *opaque, hwaddr offset,
-                                uint64_t value, unsigned size)
+static void avr32exp_intc_write(void *opaque, hwaddr offset, uint64_t value,
+                                unsigned size)
 {
     AVR32EXPMcuState *mcu = opaque;
 
-    if (offset >= AVR32EXP_INTC_INTPR_BASE
-        && offset < AVR32EXP_INTC_INTPR_BASE + AVR32EXP_INTC_NR_IRQS * 4
-        && (offset & 3) == 0) {
+    if (offset >= AVR32EXP_INTC_INTPR_BASE &&
+        offset < AVR32EXP_INTC_INTPR_BASE + AVR32EXP_INTC_NR_IRQS * 4 &&
+        (offset & 3) == 0) {
         mcu->intc_intpr[offset / 4] = value;
         avr32exp_intc_update_cpu(mcu);
     }
@@ -274,13 +262,13 @@ static const MemoryRegionOps avr32exp_intc_ops = {
     .write = avr32exp_intc_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
+            .min_access_size = 4,
+            .max_access_size = 4,
+        },
     .impl = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
+            .min_access_size = 4,
+            .max_access_size = 4,
+        },
 };
 
 static uint32_t avr32exp_usart_status(AVR32EXPUSARTState *usart)
@@ -340,8 +328,8 @@ static uint8_t avr32exp_usart_rx_fifo_pop(AVR32EXPUSARTState *usart)
 {
     uint8_t ch = usart->rx_fifo[usart->rx_fifo_head];
 
-    usart->rx_fifo_head = (usart->rx_fifo_head + 1) %
-                          AVR32EXP_USART_RX_FIFO_SIZE;
+    usart->rx_fifo_head =
+        (usart->rx_fifo_head + 1) % AVR32EXP_USART_RX_FIFO_SIZE;
     usart->rx_fifo_len--;
     usart->rx_ready = usart->rx_fifo_len != 0;
     return ch;
@@ -351,8 +339,8 @@ static void avr32exp_usart_drain_rx_pdc(AVR32EXPUSARTState *usart)
 {
     bool transferred = false;
 
-    while ((usart->ptsr & ATMEL_PDC_RXTEN) &&
-           usart->rcr != 0 && usart->rx_fifo_len != 0) {
+    while ((usart->ptsr & ATMEL_PDC_RXTEN) && usart->rcr != 0 &&
+           usart->rx_fifo_len != 0) {
         uint8_t ch = avr32exp_usart_rx_fifo_pop(usart);
         MemTxResult result;
 
@@ -431,8 +419,7 @@ static void avr32exp_usart_receive(void *opaque, const uint8_t *buf, int size)
     qemu_chr_fe_accept_input(&usart->chr);
 }
 
-static uint64_t avr32exp_usart_read(void *opaque, hwaddr offset,
-                                    unsigned size)
+static uint64_t avr32exp_usart_read(void *opaque, hwaddr offset, unsigned size)
 {
     AVR32EXPUSARTState *usart = opaque;
 
@@ -476,8 +463,8 @@ static uint64_t avr32exp_usart_read(void *opaque, hwaddr offset,
     }
 }
 
-static void avr32exp_usart_write(void *opaque, hwaddr offset,
-                                 uint64_t value, unsigned size)
+static void avr32exp_usart_write(void *opaque, hwaddr offset, uint64_t value,
+                                 unsigned size)
 {
     AVR32EXPUSARTState *usart = opaque;
     uint8_t ch;
@@ -573,22 +560,27 @@ static const MemoryRegionOps avr32exp_usart_ops = {
     .write = avr32exp_usart_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 1,
-        .max_access_size = 4,
-    },
+            .min_access_size = 1,
+            .max_access_size = 4,
+        },
     .impl = {
-        .min_access_size = 1,
-        .max_access_size = 4,
-    },
+            .min_access_size = 1,
+            .max_access_size = 4,
+        },
 };
 
-// This functions sets up the device
+/*
+ * This function sets up the device.
+ */
 static void avr32exp_realize(DeviceState *dev, Error **errp)
 {
     AVR32EXPMcuState *s = AVR32EXP_MCU(dev);
     const AVR32EXPMcuClass *mc = AVR32EXP_MCU_GET_CLASS(dev);
-    static const char * const usart_names[] = {
-        "atmel-usart0", "atmel-usart1", "atmel-usart2", "atmel-usart3",
+    static const char *const usart_names[] = {
+        "atmel-usart0",
+        "atmel-usart1",
+        "atmel-usart2",
+        "atmel-usart3",
     };
     int i;
 
@@ -597,37 +589,36 @@ static void avr32exp_realize(DeviceState *dev, Error **errp)
     object_property_set_bool(OBJECT(&s->cpu), "realized", true, &error_abort);
 
     /* Flash */
-    memory_region_init_rom(&s->flash, OBJECT(dev),
-                           "flash", mc->flash_size, &error_fatal);
-    memory_region_add_subregion(get_system_memory(),
-                                AVR32EXP_FLASH_BASE, &s->flash);
+    memory_region_init_rom(&s->flash, OBJECT(dev), "flash", mc->flash_size,
+                           &error_fatal);
+    memory_region_add_subregion(get_system_memory(), AVR32EXP_FLASH_BASE,
+                                &s->flash);
 
     /* SRAM */
-    memory_region_init_ram(&s->sram, OBJECT(dev),
-                           "sram", mc->sram_size, &error_fatal);
-    memory_region_add_subregion(get_system_memory(),
-                                AVR32EXP_SRAM_BASE, &s->sram);
+    memory_region_init_ram(&s->sram, OBJECT(dev), "sram", mc->sram_size,
+                           &error_fatal);
+    memory_region_add_subregion(get_system_memory(), AVR32EXP_SRAM_BASE,
+                                &s->sram);
     s->cpu.env.r[AVR32A_SP_REG] = AVR32EXP_SRAM_BASE + mc->sram_size;
 
-    /* Linux for AT32AP700x expects SDRAM at 0x10000000 and executes
-     * through AVR32's P1/P2 virtual aliases while this target still uses
-     * identity TLB translation.
+    /*
+     * Linux for AT32AP700x expects SDRAM at 0x10000000 and executes through
+     * AVR32's P1/P2 virtual aliases while this target still uses identity TLB
+     * translation.
      */
-    memory_region_init_ram(&s->ram, OBJECT(dev),
-                           "sdram", mc->ram_size, &error_fatal);
-    memory_region_add_subregion(get_system_memory(),
-                                AVR32EXP_RAM_BASE, &s->ram);
+    memory_region_init_ram(&s->ram, OBJECT(dev), "sdram", mc->ram_size,
+                           &error_fatal);
+    memory_region_add_subregion(get_system_memory(), AVR32EXP_RAM_BASE,
+                                &s->ram);
 
-    memory_region_init_alias(&s->ram_p1_alias, OBJECT(dev),
-                             "sdram-p1-alias", &s->ram, 0, mc->ram_size);
-    memory_region_add_subregion(get_system_memory(),
-                                AVR32EXP_RAM_P1_ALIAS_BASE,
+    memory_region_init_alias(&s->ram_p1_alias, OBJECT(dev), "sdram-p1-alias",
+                             &s->ram, 0, mc->ram_size);
+    memory_region_add_subregion(get_system_memory(), AVR32EXP_RAM_P1_ALIAS_BASE,
                                 &s->ram_p1_alias);
 
-    memory_region_init_alias(&s->ram_p2_alias, OBJECT(dev),
-                             "sdram-p2-alias", &s->ram, 0, mc->ram_size);
-    memory_region_add_subregion(get_system_memory(),
-                                AVR32EXP_RAM_P2_ALIAS_BASE,
+    memory_region_init_alias(&s->ram_p2_alias, OBJECT(dev), "sdram-p2-alias",
+                             &s->ram, 0, mc->ram_size);
+    memory_region_add_subregion(get_system_memory(), AVR32EXP_RAM_P2_ALIAS_BASE,
                                 &s->ram_p2_alias);
 
     s->intc_pending_irq = -1;
@@ -642,11 +633,11 @@ static void avr32exp_realize(DeviceState *dev, Error **errp)
         s->usart[i].rx_status = 0;
         avr32exp_usart_rx_fifo_reset(&s->usart[i]);
         memory_region_init_io(&s->usart[i].iomem, OBJECT(dev),
-                              &avr32exp_usart_ops, &s->usart[i],
-                              usart_names[i], AVR32EXP_USART_SIZE);
+                              &avr32exp_usart_ops, &s->usart[i], usart_names[i],
+                              AVR32EXP_USART_SIZE);
         memory_region_add_subregion(get_system_memory(),
                                     AVR32EXP_USART0_BASE +
-                                    i * AVR32EXP_USART_STRIDE,
+                                        i * AVR32EXP_USART_STRIDE,
                                     &s->usart[i].iomem);
     }
 
@@ -655,18 +646,17 @@ static void avr32exp_realize(DeviceState *dev, Error **errp)
      * should consume QEMU's first serial backend.
      */
     qemu_chr_fe_init(&s->usart[1].chr,
-                     serial_hd(0) ?: qemu_chr_new("avr32-usart1-null",
-                                                  "null", NULL),
+                     serial_hd(0)
+                         ?: qemu_chr_new("avr32-usart1-null", "null", NULL),
                      &error_abort);
     qemu_chr_fe_set_handlers(&s->usart[1].chr, avr32exp_usart_can_receive,
-                             avr32exp_usart_receive, NULL, NULL,
-                             &s->usart[1], NULL, true);
+                             avr32exp_usart_receive, NULL, NULL, &s->usart[1],
+                             NULL, true);
 
-    memory_region_init_io(&s->test_exit, OBJECT(dev),
-                          &avr32exp_test_exit_ops, s, "test-exit",
-                          AVR32EXP_TEST_EXIT_SIZE);
-    memory_region_add_subregion(get_system_memory(),
-                                AVR32EXP_TEST_EXIT_BASE, &s->test_exit);
+    memory_region_init_io(&s->test_exit, OBJECT(dev), &avr32exp_test_exit_ops,
+                          s, "test-exit", AVR32EXP_TEST_EXIT_SIZE);
+    memory_region_add_subregion(get_system_memory(), AVR32EXP_TEST_EXIT_BASE,
+                                &s->test_exit);
 }
 
 static void avr32exp_class_init(ObjectClass *oc, const void *data)
@@ -677,9 +667,9 @@ static void avr32exp_class_init(ObjectClass *oc, const void *data)
     dc->user_creatable = false;
 }
 
-static void avr32exps_class_init(ObjectClass *oc, const void *data){
-
-    AVR32EXPMcuClass* avr32exp = AVR32EXP_MCU_CLASS(oc);
+static void avr32exps_class_init(ObjectClass *oc, const void *data)
+{
+    AVR32EXPMcuClass *avr32exp = AVR32EXP_MCU_CLASS(oc);
 
     avr32exp->cpu_type = AVR32A_CPU_TYPE_NAME("AVR32EXPC");
     avr32exp->flash_size = 1024 * KiB;
@@ -688,18 +678,19 @@ static void avr32exps_class_init(ObjectClass *oc, const void *data){
 }
 
 static const TypeInfo avr32exp_mcu_types[] = {
-        {
-                .name           = TYPE_AVR32EXPS_MCU,
-                .parent         = TYPE_AVR32EXP_MCU,
-                .class_init     = avr32exps_class_init,
-        }, {
-                .name           = TYPE_AVR32EXP_MCU,
-                .parent         = TYPE_SYS_BUS_DEVICE,
-                .instance_size  = sizeof(AVR32EXPMcuState),
-                .class_size     = sizeof(AVR32EXPMcuClass),
-                .class_init     = avr32exp_class_init,
-                .abstract       = true,
-        }
+    {
+        .name = TYPE_AVR32EXPS_MCU,
+        .parent = TYPE_AVR32EXP_MCU,
+        .class_init = avr32exps_class_init,
+    },
+    {
+        .name = TYPE_AVR32EXP_MCU,
+        .parent = TYPE_SYS_BUS_DEVICE,
+        .instance_size = sizeof(AVR32EXPMcuState),
+        .class_size = sizeof(AVR32EXPMcuClass),
+        .class_init = avr32exp_class_init,
+        .abstract = true,
+    },
 };
 
 DEFINE_TYPES(avr32exp_mcu_types)
