@@ -1,6 +1,7 @@
 subdir('alpha')
 subdir('arm')
 subdir('avr')
+subdir('avr32')
 subdir('hexagon')
 subdir('hppa')
 subdir('i386')
