@@ -249,6 +249,7 @@ F: configs/targets/avr32-softmmu.mak
 F: docs/system/target-avr32.rst
 F: gdbstub/gdb-xml/avr32*.xml
 F: hw/avr32/
+F: README.avr32.md
 F: target/avr32/
 F: tests/tcg/avr32/
 
